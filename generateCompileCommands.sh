@@ -1,0 +1,1 @@
+make --just-print | compiledb
