@@ -1,4 +1,4 @@
-/* Copyright 2017 Wirepas Ltd. All Rights Reserved.
+#/* Copyright 2017 Wirepas Ltd. All Rights Reserved.
  *
  * See file LICENSE.txt for full license details.
  */
@@ -15,106 +15,41 @@
 #include "shared_data.h"
 #include "app_scheduler.h"
 
+#include "provisioning.h"
+#include "local_provisioning.h"
+#include "stack_state.h"
+
+#include "app_secure_storage.h"
+
+#include "as_provisioning.h"
+#include "as_status.h"
+
+#include "as_lis3dh.h"
+#include "as_led.h"
+#include "as_buzzer.h"
+
+#ifdef APP_BUTTON
+#include "button.h"
+#endif
+
 #define DEBUG_LOG_MODULE_NAME "PROXIMITY_APP"
 /** To activate logs, configure the following line with "LVL_INFO". */
 #define DEBUG_LOG_MAX_LEVEL LVL_INFO
 
 #include "debug_log.h"
 
-/** Period to send data */
-#define DEFAULT_PERIOD_S 10
-#define DEFAULT_PERIOD_MS (DEFAULT_PERIOD_S * 1000)
+/**  ID of memory area which is converted to secure storage area. */
+#define APP_PERSISTENT_MEMORY_AREA_ID 0x8AE573BA
 
-/** Time needed to execute the periodic work, in us */
-#define EXECUTION_TIME_US 500
+/*Global Functions*/
+app_global_functions_t *global_functions;
 
-/** Endpoint to change the sending period value */
-#define SET_PERIOD_EP 10
-
-#define DATA_EP 1
-
-/** Period to send measurements, in ms */
-static uint32_t period_ms;
-
-typedef struct __attribute__((packed))
+#ifdef APP_BUTTON
+static void buttonReset(uint8_t button_id, button_event_e event)
 {
-    /** periodic message interval in milliseconds */
-    uint32_t period_ms;
-} payload_periodic_t;
-
-/**
- * @brief   Task to send periodic message.
- * @return  next period
- */
-
-static uint32_t send_data_task(void)
-{
-    static uint32_t id = 0; // Value to send
-
-    // Create a data packet to send
-    app_lib_data_to_send_t data_to_send;
-    data_to_send.bytes = (const uint8_t *)&id;
-    data_to_send.num_bytes = sizeof(id);
-    data_to_send.dest_address = APP_ADDR_ANYSINK;
-    data_to_send.src_endpoint = DATA_EP;
-    data_to_send.dest_endpoint = DATA_EP;
-    data_to_send.qos = APP_LIB_DATA_QOS_HIGH;
-    data_to_send.flags = APP_LIB_DATA_SEND_FLAG_NONE;
-    data_to_send.tracking_id = APP_LIB_DATA_NO_TRACKING_ID;
-
-    // Send the data packet
-    Shared_Data_sendData(&data_to_send, NULL);
-
-    // Increment value to send
-    id++;
-
-    // Inform the stack that this function should be called again in
-    // period_ms microseconds. By returning APP_SCHEDULER_STOP_TASK,
-    // the stack won't call this function again.
-    return period_ms;
+    lib_state->stopStack();
 }
-
-/**
- * \brief   Data reception callback
- * \param   data
- *          Received data, \ref app_lib_data_received_t
- * \return  Result code, \ref app_lib_data_receive_res_e
- */
-static app_lib_data_receive_res_e dataReceivedCb(
-    const shared_data_item_t *item,
-    const app_lib_data_received_t *data)
-{
-    (void)item;
-
-    LOG(LVL_INFO, "dataReceivedCb");
-    if ((data->num_bytes < 1) || (data->num_bytes != sizeof(payload_periodic_t)))
-    {
-        // Data was not for this application
-        LOG(LVL_INFO, "dataReceiveCb - data was not for this application");
-        return APP_LIB_DATA_RECEIVE_RES_NOT_FOR_APP;
-    }
-
-    LOG(LVL_INFO, "dataReceivedCb");
-    payload_periodic_t payload = *((payload_periodic_t *)data->bytes);
-
-    /* Change the period for a new one */
-    period_ms = payload.period_ms;
-
-    // Data handled successfully
-    return APP_LIB_DATA_RECEIVE_RES_HANDLED;
-}
-
-/*Unicast messages filter*/
-static shared_data_item_t alltype_packets_filter =
-    {
-        .cb = dataReceivedCb,
-        .filter = {
-            .mode = SHARED_DATA_NET_MODE_ALL,
-            /* Filtering by source endpoint. */
-            .src_endpoint = SET_PERIOD_EP,
-            /* Filtering by destination endpoint. */
-            .dest_endpoint = SET_PERIOD_EP,
-            .multicast_cb = NULL}};
+#endif
 
 /**
  * \brief   Initialization callback for application
@@ -129,23 +64,58 @@ void App_init(const app_global_functions_t *functions)
 
     LOG_INIT();
     LOG(LVL_INFO, "App_init");
-    // Basic configuration of the node with a unique node address
-    if (configureNodeFromBuildParameters() != APP_RES_OK)
+
+    /*Used to access the global functions*/
+    global_functions = (app_global_functions_t *)functions;
+
+    // /** Now we create the secure storage area */
+    // if (App_SecureStorage_init(APP_PERSISTENT_MEMORY_AREA_ID) != APP_SECURE_STORAGE_RES_OK)
+    // {
+    //     LOG(LVL_ERROR, "SecureStorage init failed\n");
+    //     return;
+    // }
+
+    // LOG(LVL_ERROR, "SecureStorage success\n");
+
+    /*Initialize Hardware that needs to be put into sleep/low power conditions*/
+    /*Note that this is based on the device type*/
+#ifdef APP_LIS3DH
+    asLIS3DHInit();
+#endif
+
+#ifdef APP_LED
+    asLedInit();
+    asLedRunFlash();
+#endif
+
+#ifdef APP_BUZZER
+    asBuzzerInit();
+#endif
+
+    lib_settings->setNodeRole(ASAFE_WIREPAS_ROLE);
+    // At this point the device should have all the hardware in low power.
+
+    // Provisioning
+    asProvisioningInit();
+    if (Local_provisioning_is_provisioned())
     {
-        // Could not configure the node
-        // It should not happen except if one of the config value is invalid
-        return;
+        LOG(LVL_INFO, "Node is Provisioned");
+
+        // Start processes that require provisioning
+        asStatusInit();
+
+        // Node is provisioned, enable proxy mode
+        Stack_State_startStack();
+    }
+    else
+    {
+        // We need to start the provisioning process
+        LOG(LVL_INFO, "Provisioning Not Yet Done");
+        asProvisioningStart();
     }
 
-    // Set a periodic callback to be called after DEFAULT_PERIOD_MS
-    period_ms = DEFAULT_PERIOD_MS;
-    App_Scheduler_addTask_execTime(send_data_task,
-                                   APP_SCHEDULER_SCHEDULE_ASAP,
-                                   EXECUTION_TIME_US);
-
-    // Set callback for received unicast messages
-    Shared_Data_addDataReceivedCb(&alltype_packets_filter);
-
-    // Start the stack
-    lib_state->startStack();
+    // To remove later on
+#ifdef APP_BUTTON
+    Button_register_for_event(0, BUTTON_PRESSED, buttonReset);
+#endif
 }

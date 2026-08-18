@@ -2,11 +2,19 @@
 # It has to be the same as the app directory name under source
 # It can be overwritten on command line "make app_name=<...>"
 app_name=proximity_app
+# app_name=local_provisioning
+# app_name=provisioning_proxy
+# app_name=dualmcu_app
+# app_name=custom_app
 
 # Name of the board to build your application
 # If build is always with same board, it can be set here
 # It can be overwritten on command line "make target_board=<...>"
-target_board=pca10040
+# target_board=pca10040
+# target_board=pca10056
+# target_board=asMBT02
+target_board=asE9
+target_board=asC10
 
 # Version of the SDK
 sdk_major=1
