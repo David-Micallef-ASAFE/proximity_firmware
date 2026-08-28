@@ -20,10 +20,15 @@
 #include "node_configuration.h"
 #include "app_scheduler.h"
 
-#define DEVICE_TYPE_MBT02 7 // Find it Tag 3 - Asset Tag SR with Retrieval
+#define DEVICE_TYPE_MINEW_MBT02 30 // Find it Tag 3 - Asset Tag SR with Retrieval
+#define DEVICE_TYPE_MINEW_C10 31   // Find it Tag 3 - Asset Tag SR with Retrieval
+#define DEVICE_TYPE_MINEW_E9 32    // Find it Tag 3 - Asset Tag SR with Retrieval
+#define DEVICE_TYPE_KKM_K4W 33     // Find it Tag 3 - Asset Tag SR with Retrieval
+#define DEVICE_TYPE_KKM_C3W 34     // Find it Tag 3 - Asset Tag SR with Retrieval
 
 /*Source Endpoint*/
 #define ASAFE_ENDPOINT_SRC_SR 10
+#define ASAFE_ENDPOINT_SRC_HR 30
 
 /*Destination Endpoint*/
 #define ASAFE_ENDPOINT_STATUS_DST 10

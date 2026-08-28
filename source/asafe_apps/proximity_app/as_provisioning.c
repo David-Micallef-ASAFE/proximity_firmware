@@ -26,30 +26,32 @@
 
 #include "debug_log.h"
 
-#define PROVISIONING_ATTEMPT_PERIOD_S 300
+#define PROVISIONING_ATTEMPT_PERIOD_S (3600 * 24)
 
-// Pre-shared keys, shared with the local_provisioning_tool.py script
+#define PROVISIONING_WATCHDOG_PERIOD_S (60)
+
+#define PROVISIONING_PID (0x35B3F081)
+
+/*Structure to store the provisioning settings stored in secure storage*/
+static provisioning_settings_t m_prov_settings;
+
+// Pre-shared keys.  This is specifically set to 0 here and it is initialized from secure storage when provisioning is required
 static local_provisioning_psk_t m_psk = {
-    // EXAMPLES KEY ID AND PRESHARED KEY TO BE REPLACED
-    // In production applications, store these in secure storage instead of
-    // hardcoding here.
-    // See wms_secure_storage.h. Hardcoding results in the data being stored as
-    // plaintext on the flash.
     // 4 bytes id
-    .id = 0x35B3F081,
+    .id = 0x00000000,
     // 32 bytes psk
     .psk = {
-        0xe8, 0x57, 0x08, 0x00, 0x39, 0x3a, 0x58, 0x71,
-        0x18, 0x86, 0x0f, 0x15, 0x5f, 0x1c, 0x8e, 0x22,
-        0x25, 0xd2, 0xbd, 0xed, 0xb2, 0xa5, 0x56, 0x82,
-        0xe0, 0xda, 0xf2, 0xb9, 0xdb, 0x3b, 0xf0, 0xcf}};
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}};
 
-static local_provisioning_config_t conf = {.timeout_s = 20};
+static local_provisioning_config_t conf = {.timeout_s = 120};
 
 static uint32_t restartProvisioning()
 {
     // There is no way to restart the provisioning attempt and a restart of the node is required
-    Local_provisioning_reset_node();
+    lib_state->stopStack();
     return APP_SCHEDULER_STOP_TASK;
 }
 
@@ -64,11 +66,6 @@ static bool on_joining_end_cb(bool success)
         LOG(LVL_INFO, "Provisioning Success - Restarting");
         // At this point we will have a restart so no need to add any actions here.
     }
-    else
-    {
-        LOG(LVL_INFO, "Provisioning Failed, Scheduling Re-Provision in %d Seconds", PROVISIONING_ATTEMPT_PERIOD_S);
-        App_Scheduler_addTask_execTime(restartProvisioning, PROVISIONING_ATTEMPT_PERIOD_S * 1000, 500);
-    }
 
     /*
     By returning false we indicate to the provisioning library that we
@@ -77,9 +74,42 @@ static bool on_joining_end_cb(bool success)
     return false;
 }
 
+// This task runs separate from the provisioning library and will restart the device (to initiate a new provisioning)
+static uint32_t provisioningWatchdogTask()
+{
+    if (!Local_provisioning_is_provisioned())
+    {
+        LOG(LVL_INFO, "Checking Provisioning %d", lib_time->getTimestampS())
+        if (lib_time->getTimestampS() >= PROVISIONING_ATTEMPT_PERIOD_S)
+        {
+            restartProvisioning();
+        }
+        return (PROVISIONING_WATCHDOG_PERIOD_S * 1000);
+    }
+    else
+    {
+        return APP_SCHEDULER_STOP_TASK;
+    }
+}
+
 void asProvisioningInit()
 {
-    Local_provisioning_init(&m_psk, asProvisioningOnProvisionProxyEnabledCB, &conf);
+    /*Read the keys from storage*/
+    provisioning_ret_e ret;
+    ret = Provisioning_settings_read(&m_prov_settings);
+    if (ret != PROV_RET_OK)
+    {
+        LOG(LVL_ERROR, "Error reading provisioning settings %d", ret);
+    }
+    else
+    {
+        m_psk.id = PROVISIONING_PID;
+        memcpy(m_psk.psk, m_prov_settings.prov_keys.auth_key, 32);
+        Local_provisioning_init(&m_psk, asProvisioningOnProvisionProxyEnabledCB, &conf);
+    }
+
+    /*First create a task that will act as our watchdog*/
+    App_Scheduler_addTask_execTime(provisioningWatchdogTask, APP_SCHEDULER_SCHEDULE_ASAP, 500);
 }
 
 /**

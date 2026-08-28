@@ -15,6 +15,8 @@
 #include "shared_data.h"
 #include "app_scheduler.h"
 
+#include "hal_api.h"
+
 #include "as_types.h"
 #include "as_wirepas.h"
 
@@ -25,7 +27,7 @@
 
 #define STATUS_TASK_PERIOD_SECONDS (10)
 // #define STATUS_UPDATE_PERIOD_SECONDS (3600 * 24)
-#define STATUS_UPDATE_PERIOD_SECONDS (60) // For Testing only
+#define STATUS_UPDATE_PERIOD_SECONDS (7200) // For Testing only
 
 statusMsg_t statusMessage;
 
@@ -69,7 +71,11 @@ static uint32_t asStatusTask()
         statusMessage.deviceType = ASAFE_DEVICE_TYPE;
         switch (ASAFE_DEVICE_TYPE)
         {
-        case DEVICE_TYPE_MBT02:
+        case DEVICE_TYPE_MINEW_MBT02:
+        case DEVICE_TYPE_MINEW_C10:
+        case DEVICE_TYPE_MINEW_E9:
+        case DEVICE_TYPE_KKM_K4W:
+        case DEVICE_TYPE_KKM_C3W:
             statusMessage.deviceRole = DEVICE_ROLE_TAG;
             break;
         default:
@@ -86,13 +92,21 @@ static uint32_t asStatusTask()
         /*Source Endpoint*/
         switch (ASAFE_DEVICE_TYPE)
         {
-        case DEVICE_TYPE_MBT02:
+        case DEVICE_TYPE_MINEW_MBT02:
+        case DEVICE_TYPE_MINEW_C10:
+        case DEVICE_TYPE_MINEW_E9:
             srcEndpoint = ASAFE_ENDPOINT_SRC_SR;
+            break;
+        case DEVICE_TYPE_KKM_K4W:
+        case DEVICE_TYPE_KKM_C3W:
+            srcEndpoint = ASAFE_ENDPOINT_SRC_HR;
             break;
         default:
             srcEndpoint = ASAFE_ENDPOINT_SRC_SR;
             break;
         }
+
+        statusMessage.vbat = Mcu_voltageGet();
 
         asWirepasSend((uint8_t *)&statusMessage, sizeof(statusMessage), srcEndpoint, ASAFE_ENDPOINT_STATUS_DST, APP_LIB_DATA_QOS_NORMAL);
     }

@@ -15,7 +15,6 @@
 #include "shared_data.h"
 #include "app_scheduler.h"
 
-#include "provisioning.h"
 #include "local_provisioning.h"
 #include "stack_state.h"
 
@@ -27,6 +26,14 @@
 #include "as_lis3dh.h"
 #include "as_led.h"
 #include "as_buzzer.h"
+
+#include "as_gpio.h"
+
+#include "as_dw3000.h"
+
+/*Only enabled for testing app_setup*/
+#include "app_setup.h"
+// #include "provisioning.h"
 
 #ifdef APP_BUTTON
 #include "button.h"
@@ -65,20 +72,17 @@ void App_init(const app_global_functions_t *functions)
     LOG_INIT();
     LOG(LVL_INFO, "App_init");
 
+    App_Setup();
+
     /*Used to access the global functions*/
     global_functions = (app_global_functions_t *)functions;
 
-    // /** Now we create the secure storage area */
-    // if (App_SecureStorage_init(APP_PERSISTENT_MEMORY_AREA_ID) != APP_SECURE_STORAGE_RES_OK)
-    // {
-    //     LOG(LVL_ERROR, "SecureStorage init failed\n");
-    //     return;
-    // }
+/*Initialize Hardware that needs to be put into sleep/low power conditions*/
+/*Note that this is based on the device type*/
+#ifdef CONFIG_NFCT_PINS_AS_GPIOS
+    asGPIOInitNFCPinsToGPIO();
+#endif
 
-    // LOG(LVL_ERROR, "SecureStorage success\n");
-
-    /*Initialize Hardware that needs to be put into sleep/low power conditions*/
-    /*Note that this is based on the device type*/
 #ifdef APP_LIS3DH
     asLIS3DHInit();
 #endif
@@ -92,14 +96,18 @@ void App_init(const app_global_functions_t *functions)
     asBuzzerInit();
 #endif
 
-    lib_settings->setNodeRole(ASAFE_WIREPAS_ROLE);
-    // At this point the device should have all the hardware in low power.
+#ifdef APP_UWB
+    asDW3000Init();
+#endif
 
-    // Provisioning
-    asProvisioningInit();
+    //  At this point the device should have all the hardware in low power.
     if (Local_provisioning_is_provisioned())
     {
-        LOG(LVL_INFO, "Node is Provisioned");
+#ifdef APP_PRINTING
+        uint32_t nodeSerialNumber;
+        lib_settings->getNodeAddress(&nodeSerialNumber);
+        LOG(LVL_INFO, "Node %u is provisioned", nodeSerialNumber);
+#endif
 
         // Start processes that require provisioning
         asStatusInit();
@@ -109,8 +117,10 @@ void App_init(const app_global_functions_t *functions)
     }
     else
     {
-        // We need to start the provisioning process
         LOG(LVL_INFO, "Provisioning Not Yet Done");
+        // Provisioning init
+        asProvisioningInit();
+        // Start the provisioning process
         asProvisioningStart();
     }
 

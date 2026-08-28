@@ -1,5 +1,5 @@
 # Boards compatible with this app 
-TARGET_BOARDS := pca10040 asMBT02 asE9 asC10
+TARGET_BOARDS := pca10040 asMBT02 asE9 asC10 asK4W asC3W
 #
 # Network default settings configuration
 #
@@ -26,6 +26,9 @@ default_network_channel ?= 37
 # Define a specific application area_id - This was moved into the specific config
 #app_specific_area_id=0x83744C
 
+# Hal Voltage is used accross all devices
+HAL_VOLTAGE=yes
+
 # Use Shared Data
 SHARED_DATA=yes
 
@@ -40,18 +43,38 @@ APP_SCHEDULER_TASKS=8
 LOCAL_PROVISIONING=yes
 STACK_STATE_LIB=yes
 
-##Storage
-APP_SECURE_STORAGE=yes
+# Enable App Setup to safely load the keys
+APP_SETUP=yes
+
+
+#Configurations - Note that below we assume one configuration per board
+#Minew MBT02
+ifeq ($(target_board),asMBT02)
+-include $(APP_SRCS_PATH)/app_config/tag/Minew/MBT02.mk
+endif
+#Minew E9
+ifeq ($(target_board),asE9)
+-include $(APP_SRCS_PATH)/app_config/tag/Minew/E9.mk
+endif
+#Minew C10
+ifeq ($(target_board),asC10)
+-include $(APP_SRCS_PATH)/app_config/tag/Minew/C10.mk
+endif
+#KKM K4W
+ifeq ($(target_board),asK4W)
+-include $(APP_SRCS_PATH)/app_config/tag/KKM/K4W.mk
+endif
+#KKM C3W
+ifeq ($(target_board),asC3W)
+-include $(APP_SRCS_PATH)/app_config/tag/KKM/C3W.mk
+endif
+
+#Versions Launched
+#1.0.1.0 - Initial Version used during order of devices from Minew and KKM for proximity demo.  App simply launches the device into low power, provisions the device but has no further capabilities.  App is able to send status update
+
 
 # App version
-app_major=2
+app_major=1
 app_minor=0
-app_maintenance=0
+app_maintenance=1
 app_development=0
-
-
-
-#Tags
-# -include $(APP_SRCS_PATH)/app_config/tag/Minew/MBT02.mk
-# -include $(APP_SRCS_PATH)/app_config/tag/Minew/E9.mk
--include $(APP_SRCS_PATH)/app_config/tag/Minew/C10.mk

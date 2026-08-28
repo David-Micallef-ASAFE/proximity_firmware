@@ -97,6 +97,12 @@ void asLIS3DHInit()
 {
     uint8_t whoamI, dummy;
 
+/*Initialize the SDO pin if its defined.  Note the SDO is internally pulled up in the accel so putting it to gnd will waste energy*/
+#ifdef LIS3DH_SDO
+    nrf_gpio_cfg_output(LIS3DH_SDO);
+    nrf_gpio_pin_set(LIS3DH_SDO);
+#endif
+
     asI2CHWOpen();
 
     /* Initialize mems driver interface */
