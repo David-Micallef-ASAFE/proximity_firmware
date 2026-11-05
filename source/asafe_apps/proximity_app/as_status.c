@@ -19,6 +19,7 @@
 
 #include "as_types.h"
 #include "as_wirepas.h"
+#include "as_proximity.h"
 
 #define DEBUG_LOG_MODULE_NAME "AS STATUS"
 #define DEBUG_LOG_MAX_LEVEL LVL_INFO
@@ -27,11 +28,13 @@
 
 #define STATUS_TASK_PERIOD_SECONDS (10)
 // #define STATUS_UPDATE_PERIOD_SECONDS (3600 * 24)
-#define STATUS_UPDATE_PERIOD_SECONDS (7200) // For Testing only
+#define STATUS_UPDATE_PERIOD_SECONDS (60) // For Testing only
 
 statusMsg_t statusMessage;
 
 extern app_global_functions_t *global_functions;
+
+extern asProximitySettings_t asProximitySettings;
 
 static uint32_t asGetStackVersion()
 {
@@ -60,8 +63,9 @@ static uint32_t asStatusTask()
     uint8_t wirepasRole;
 
     if (timestampLastStatusTransmit == 0 ||
-        (lib_time->getTimestampS() - timestampLastStatusTransmit) > STATUS_UPDATE_PERIOD_SECONDS)
+        (lib_time->getTimestampS() - timestampLastStatusTransmit) > asProximitySettings.heartbeatPeriodSeconds)
     {
+        LOG(LVL_INFO, "Sending status update");
         /*Update the timestamp*/
         timestampLastStatusTransmit = lib_time->getTimestampS();
 
@@ -78,6 +82,7 @@ static uint32_t asStatusTask()
         case DEVICE_TYPE_KKM_C3W:
             statusMessage.deviceRole = DEVICE_ROLE_TAG;
             break;
+        case DEVICE_TYPE_ASAFE_JIG:
         default:
             statusMessage.deviceRole = DEVICE_ROLE_ANCHOR;
             break;
@@ -99,7 +104,7 @@ static uint32_t asStatusTask()
             break;
         case DEVICE_TYPE_KKM_K4W:
         case DEVICE_TYPE_KKM_C3W:
-            srcEndpoint = ASAFE_ENDPOINT_SRC_HR;
+            srcEndpoint = ASAFE_ENDPOINT_SRC_HR_TAG;
             break;
         default:
             srcEndpoint = ASAFE_ENDPOINT_SRC_SR;
@@ -110,7 +115,7 @@ static uint32_t asStatusTask()
 
         asWirepasSend((uint8_t *)&statusMessage, sizeof(statusMessage), srcEndpoint, ASAFE_ENDPOINT_STATUS_DST, APP_LIB_DATA_QOS_NORMAL);
     }
-
+    LOG(LVL_INFO, "Status update");
     // commSend((uint8_t *)&statusMessage, sizeof(statusMsg_t), ENDPOINT_UPLINK_STATUS_SOURCE, ENDPOINT_UPLINK_STATUS_DESTINATION, false, 0);
     return (STATUS_TASK_PERIOD_SECONDS * 1000);
 }

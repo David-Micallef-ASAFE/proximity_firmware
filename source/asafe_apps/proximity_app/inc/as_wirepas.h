@@ -22,5 +22,9 @@
 
 void asWirepasInit();
 app_lib_data_send_res_e asWirepasSend(uint8_t *buffer, uint8_t size, uint8_t srcEndpoint, uint8_t destEndpoint, app_lib_data_qos_e priority);
+bool asWirepasSinkRouteEstablished();
+
+app_lib_data_receive_res_e wirepasDataReceivedCb(const app_lib_data_received_t *data);
+void asWirepasResetSettings();
 
 #endif /* __AS_WIREPAS_H_ */

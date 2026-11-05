@@ -18,7 +18,14 @@
 
 #include "api.h"
 
+typedef enum
+{
+    SPI_SPEED_SLOW,
+    SPI_SPEED_FAST
+} spiSpeed_t;
+
 void asSPIInit();
 void asSPIClose();
+void asSPIOpen(spiSpeed_t spiSpeed);
 
 #endif

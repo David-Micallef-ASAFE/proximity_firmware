@@ -19,10 +19,14 @@
 #include "api.h"
 #include "node_configuration.h"
 #include "app_scheduler.h"
+#include "as_protocol.h"
+#include "as_proximity.h"
 
 void asProvisioningInit();
 void asProvisioningStart();
 
 void asProvisioningOnProvisionProxyEnabledCB(bool enabled);
+void asProvioningUpdateKeys(const asProtoValue_t *value);
+void asProvisioningLoadKeys(asProximitySettings_t *settings);
 
 #endif /* __AS_PROVISIONING_H_ */

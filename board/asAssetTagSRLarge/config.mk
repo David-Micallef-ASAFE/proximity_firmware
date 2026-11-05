@@ -1,0 +1,1 @@
+../asAnchorHR/config.mk

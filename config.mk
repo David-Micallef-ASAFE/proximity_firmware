@@ -6,6 +6,7 @@ app_name=proximity_app
 # app_name=provisioning_proxy
 # app_name=dualmcu_app
 # app_name=custom_app
+# app_name=nfc
 
 # Name of the board to build your application
 # If build is always with same board, it can be set here
@@ -13,8 +14,15 @@ app_name=proximity_app
 # target_board=pca10040
 # target_board=pca10056
 # target_board=asMBT02
-target_board=asE9
-target_board=asC10
+# target_board=asE9
+# target_board=asC10
+# target_board=asK4W
+# target_board=asC3W
+# target_board=asJIG
+# target_board=asAnchorHR
+# target_board=asAssetTagHRWithRetrieval
+target_board=asAssetTagSRLarge
+
 
 # Version of the SDK
 sdk_major=1

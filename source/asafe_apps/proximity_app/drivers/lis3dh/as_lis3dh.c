@@ -19,6 +19,11 @@
 #include "i2c.h"
 #include "as_i2c.h"
 
+#include "gpio.h"
+#include "board.h"
+
+#include "as_proximity.h"
+
 #define DEBUG_LOG_MODULE_NAME "AS LIS3DH"
 #define DEBUG_LOG_MAX_LEVEL LVL_INFO
 
@@ -26,6 +31,10 @@
 
 #define I2C_ADDRESS_L LIS3DH_I2C_ADD_L
 #define I2C_ADDRESS_H LIS3DH_I2C_ADD_H
+
+/*Device ID retries cover the 5ms LIS3DH boot time after power up*/
+#define LIS3DH_ID_RETRIES 10
+#define LIS3DH_ID_RETRY_DELAY_US 1000
 
 i2c_xfer_t i2c_xfer;
 
@@ -54,8 +63,7 @@ static int32_t platform_write(void *handle, uint8_t reg, const uint8_t *bufp,
     i2c_xfer.write_size = 1 + len;
     i2c_xfer.read_size = 0;
     i2c_xfer.read_ptr = NULL;
-    I2C_transfer(&i2c_xfer, NULL);
-    return 0;
+    return (int32_t)I2C_transfer(&i2c_xfer, NULL);
 }
 
 /*
@@ -74,20 +82,45 @@ static int32_t platform_read(void *handle, uint8_t reg, uint8_t *bufp,
     reg |= 0x80;
     i2cTX_buffer[0] = reg;
 
+    /*Sub address write followed by a repeated start read in a single transfer, as per the LIS3DH datasheet*/
     i2c_xfer.address = (I2C_ADDRESS_H >> 1);
     i2c_xfer.write_ptr = i2cTX_buffer;
     i2c_xfer.write_size = 1;
-    i2c_xfer.read_size = 0;
-    i2c_xfer.read_ptr = NULL;
-    I2C_transfer(&i2c_xfer, NULL);
-
-    i2c_xfer.address = (I2C_ADDRESS_H >> 1);
-    i2c_xfer.write_ptr = NULL;
-    i2c_xfer.write_size = 0;
     i2c_xfer.read_size = len;
     i2c_xfer.read_ptr = bufp;
-    I2C_transfer(&i2c_xfer, NULL);
-    return 0;
+    return (int32_t)I2C_transfer(&i2c_xfer, NULL);
+}
+
+/*
+ * @brief  Busy wait, used while the LIS3DH completes its boot sequence
+ */
+static void lis3dh_delay_us(uint32_t us)
+{
+    app_lib_time_timestamp_hp_t end = lib_time->addUsToHpTimestamp(lib_time->getTimestampHp(), us);
+
+    while (lib_time->isHpTimestampBefore(lib_time->getTimestampHp(), end))
+        ;
+}
+
+#ifdef AS_RTLS_ROLE_TAG
+
+/*
+ * @brief  Callback function for the interrupt pin.  This function is called when the interrupt pin goes high.  It will schedule a task to read the sensor data.
+ */
+static void lis3dh_event_cb(gpio_id_t id, gpio_in_event_e event)
+{
+    (void)id;
+    (void)event;
+    LOG(LVL_INFO, "Motion Detected");
+#ifdef AS_RTLS_ROLE_TAG
+    asProximityMotionDetected();
+#endif
+}
+#endif
+
+bool asLIS3DHInMotion()
+{
+    return (bool)nrf_gpio_pin_read(LIS3DH_INTERRUPT_1_PIN);
 }
 
 /*
@@ -95,7 +128,7 @@ static int32_t platform_read(void *handle, uint8_t reg, uint8_t *bufp,
  */
 void asLIS3DHInit()
 {
-    uint8_t whoamI, dummy;
+    uint8_t whoamI;
 
 /*Initialize the SDO pin if its defined.  Note the SDO is internally pulled up in the accel so putting it to gnd will waste energy*/
 #ifdef LIS3DH_SDO
@@ -111,29 +144,44 @@ void asLIS3DHInit()
     dev_ctx.handle = NULL;
     /* Initialize platform specific hardware */
 
+#ifdef AS_RTLS_ROLE_TAG
+    uint8_t dummy;
     lis3dh_int1_cfg_t int1_cfg;
     lis3dh_ctrl_reg3_t ctrl_reg3;
+#endif
 
-    /*Check device ID*/
-    lis3dh_device_id_get(&dev_ctx, &whoamI);
+    /*Check device ID.  After power up the LIS3DH needs up to 5ms to boot and will not respond until then, so retry*/
+    int32_t res = 0;
+    whoamI = 0;
+    for (uint8_t attempt = 0; attempt < LIS3DH_ID_RETRIES; attempt++)
+    {
+        res = lis3dh_device_id_get(&dev_ctx, &whoamI);
+        if ((res == I2C_RES_OK) && (whoamI == LIS3DH_ID))
+        {
+            break;
+        }
+        lis3dh_delay_us(LIS3DH_ID_RETRY_DELAY_US);
+    }
 
-    if (whoamI != LIS3DH_ID)
+    if ((res != I2C_RES_OK) || (whoamI != LIS3DH_ID))
     {
         // lib_state->stopStack();
-        LOG(LVL_ERROR, "LIS3DH Error\n");
+        LOG(LVL_ERROR, "LIS3DH Error i2c res %d whoami 0x%02x\n", res, whoamI);
+        asI2CHWClose();
         return;
     }
 
     LOG(LVL_INFO, "LIS3DH OK\n");
 
-    /*Put the lis3dh in low power*/
+    // Still to add correct config for anchor
+#ifdef AS_RTLS_ROLE_ANCHOR
+    // Anchor does not use the Accel so simply power it down
     lis3dh_data_rate_set(&dev_ctx, LIS3DH_POWER_DOWN);
-
-    /*Close I2C*/
     asI2CHWClose();
-
     return;
+#endif
 
+#ifdef AS_RTLS_ROLE_TAG
     /*Reset the accel*/
     dummy = 0x10;
     lis3dh_write_reg(&dev_ctx, LIS3DH_CTRL_REG0, &dummy, 1);
@@ -182,7 +230,30 @@ void asLIS3DHInit()
     int1_cfg.aoi = PROPERTY_DISABLE;
     lis3dh_int1_gen_conf_set(&dev_ctx, &int1_cfg);
 
-    /*Initialize the Interrupt Logic*/
+    /*Put the lis3dh in low power*/
+    lis3dh_data_rate_set(&dev_ctx, LIS3DH_ODR_10Hz);
 
     asI2CHWClose();
+
+    /*Initialize the Interrupt Logic*/
+
+    gpio_res_e gpio_res;
+    const gpio_in_cfg_t motion_mon_int_cfg =
+        {
+            .event_cb = lis3dh_event_cb,
+            .event_cfg = GPIO_IN_EVENT_RISING_EDGE,
+            .in_mode_cfg = GPIO_IN_PULL_NONE};
+
+    gpio_res = Gpio_inputSetCfg(BOARD_GPIO_ID_LIS3DH, &motion_mon_int_cfg);
+
+    if (gpio_res != GPIO_RES_OK)
+    {
+
+        LOG(LVL_INFO, "Cannot enable interrupt pin %d", gpio_res);
+    }
+    else
+    {
+        LOG(LVL_INFO, "LIS3DH INT pin  registered");
+    }
+#endif
 }

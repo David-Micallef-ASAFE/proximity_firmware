@@ -16,15 +16,15 @@
 // Serial port pins
 #define BOARD_USART_TX_PIN 17 // labeled as DTM_RX on the schematic
 #define BOARD_USART_RX_PIN 8
-#define BOARD_USART_CTS_PIN 7 /* For USE_USART_HW_FLOW_CONTROL */
-#define BOARD_USART_RTS_PIN 5 /* For USE_USART_HW_FLOW_CONTROL */
+#define BOARD_USART_CTS_PIN 27 /* For USE_USART_HW_FLOW_CONTROL */
+#define BOARD_USART_RTS_PIN 5  /* For USE_USART_HW_FLOW_CONTROL */
 
-// List of GPIO pins
-#define BOARD_GPIO_PIN_LIST { \
-    13}
+// List of GPIO pins - This is used
+#define BOARD_GPIO_PIN_LIST {13, 7}
 
 // User friendly name for GPIOs (IDs mapped to the BOARD_GPIO_PIN_LIST table)
-#define BOARD_GPIO_ID_BUTTON0 0 // mapped to pin P0.13
+#define BOARD_GPIO_ID_BUTTON0 0 // mapped to pin P0.13 - Button
+#define BOARD_GPIO_ID_LIS3DH 1  // mapped to pin P0.07 - LIS3DH INT1
 
 // List of button IDs
 #define BOARD_BUTTON_ID_LIST {BOARD_GPIO_ID_BUTTON0}

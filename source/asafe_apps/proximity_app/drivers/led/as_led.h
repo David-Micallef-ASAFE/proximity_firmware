@@ -20,15 +20,15 @@
 #include "node_configuration.h"
 #include "app_scheduler.h"
 #ifdef APP_LED
-#define LED_INIT() ledInit()
-#define LED_RUN_FLASH() ledRunFlash()
-#define LED_FLASH(num) ledFlash(num)
-#define LED_FLASH_SHORT(num) ledFlashShort(num)
-#define LED_FLASH_SHORT_DELAYED(num) ledFlashShortDelayed(num)
-#define LED_FLASH_LONG(num) ledFlashLong(num)
-#define LED_FLASH_LONG_DELAYED(num) ledFlashLongDelayed(num)
-#define LED_FLASHES(num, flash_num) ledFlashes(num, flash_num)
-#define LED_FLASH_DELAYED(num) ledFlashDelayed(num)
+#define LED_INIT() asLedInit()
+#define LED_RUN_FLASH() asLedRunFlash()
+#define LED_FLASH(num) asLedFlash(num)
+#define LED_FLASH_SHORT(num, flash_num) asLedFlashShort(num, flash_num)
+#define LED_FLASH_SHORT_DELAYED(num) asLedFlashShortDelayed(num)
+#define LED_FLASH_LONG(num) asLedFlashLong(num)
+#define LED_FLASH_LONG_DELAYED(num) asLedFlashLongDelayed(num)
+#define LED_FLASHES(num, flash_num) asLedFlashes(num, flash_num)
+#define LED_FLASH_DELAYED(num) asLedFlashDelayed(num)
 #else
 #define LED_INIT()
 #define LED_RUN_FLASH()
@@ -67,7 +67,7 @@ void asLedInit(void);
 void asLedRunFlash();
 void asLedFlash(uint8_t num);
 void asLedFlashLong(uint8_t num);
-void asLedFlashShort(uint8_t num);
+void asLedFlashShort(uint8_t num, uint8_t flash_num);
 void asLedFlashes(uint8_t num, int8_t flash_num);
 void asLedFlashShortDelayed(uint8_t num);
 void asLedFlashLongDelayed(uint8_t num);

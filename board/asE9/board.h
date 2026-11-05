@@ -21,10 +21,11 @@
 
 // List of GPIO pins
 #define BOARD_GPIO_PIN_LIST { \
-    13}
+    13, 7}
 
 // User friendly name for GPIOs (IDs mapped to the BOARD_GPIO_PIN_LIST table)
 #define BOARD_GPIO_ID_BUTTON0 0 // mapped to pin P0.13
+#define BOARD_GPIO_ID_LIS3DH 1  // mapped to pin P0.7
 
 // List of button IDs
 #define BOARD_BUTTON_ID_LIST {BOARD_GPIO_ID_BUTTON0}

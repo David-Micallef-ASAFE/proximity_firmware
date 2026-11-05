@@ -28,7 +28,7 @@
 
 #define LED_SEQUENCE_TIME_MS 100
 #define LED_SEQUENCE_TIME_DELAY_MS 500       // used to introduce a delay in the sequence
-#define LED_SEQUENCE_TIME_DELAY_SHORT_MS 200 // used to introduce a delay in the sequence
+#define LED_SEQUENCE_TIME_DELAY_SHORT_MS 100 // used to introduce a delay in the sequence
 #define LED_SEQUENCE_TIME_DELAY_LONG_MS 800  // used to introduce a delay in the sequence
 
 /** Time needed to execute the periodic work, in us */
@@ -216,14 +216,18 @@ void asLedFlashes(uint8_t num, int8_t flash_num)
     }
 }
 
-void asLedFlashShort(uint8_t num)
+void asLedFlashShort(uint8_t num, uint8_t flash_num)
 {
     bool ongoingOperation = !ledQueueIsEmpty();
     if (num < NUMBER_OF_LEDS)
     {
-        ledQueuePut(pin_map[num], LED_ACTION_ON);
-        ledQueuePut(pin_map[num], LED_ACTION_DELAY_SHORT);
-        ledQueuePut(pin_map[num], LED_ACTION_OFF);
+        while (flash_num-- > 0)
+        {
+            ledQueuePut(pin_map[num], LED_ACTION_ON);
+            ledQueuePut(pin_map[num], LED_ACTION_DELAY_SHORT);
+            ledQueuePut(pin_map[num], LED_ACTION_OFF);
+            ledQueuePut(pin_map[num], LED_ACTION_DELAY_SHORT);
+        }
         if (!ongoingOperation)
         {
             App_Scheduler_addTask_execTime(ledTask, APP_SCHEDULER_SCHEDULE_ASAP, LED_TASK_EXECUTION_TIME_US);

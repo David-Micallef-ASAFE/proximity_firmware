@@ -28,12 +28,16 @@
 
 #define BUZZER_TASK_EXECUTION 500
 
-#define BUZZER_SEQUENCE_TIME_DELAY_MS 500       // used to introduce a delay in the sequence
-#define BUZZER_SEQUENCE_TIME_DELAY_SHORT_MS 200 // used to introduce a delay in the sequence
-#define BUZZER_SEQUENCE_TIME_DELAY_LONG_MS 800  // used to introduce a delay in the sequence
+#define BUZZER_SEQUENCE_TIME_DELAY_MS 500            // used to introduce a delay in the sequence
+#define BUZZER_SEQUENCE_TIME_DELAY_SHORT_MS 100      // used to introduce a delay in the sequence
+#define BUZZER_SEQUENCE_TIME_DELAY_SUPER_SHORT_MS 50 // used to introduce a delay in the sequence
+#define BUZZER_SEQUENCE_TIME_DELAY_LONG_MS 800       // used to introduce a delay in the sequence
 
-#define PWM_PERIOD 8000 // 1ms
-#define PWM_CH0_DUTY 1000
+// PWM clock is 16MHz (DIV_1), so frequency = 16MHz / PWM_PERIOD
+#define PWM_PERIOD_F1 8000 // 2kHz
+#define PWM_CH0_DUTY_F1 1000
+#define PWM_PERIOD_F2 7000                                                // ~2.29kHz
+#define PWM_CH0_DUTY_F2 (PWM_CH0_DUTY_F1 * PWM_PERIOD_F2 / PWM_PERIOD_F1) // same duty ratio as F1
 
 #define BUZZER_ACTION_TIMEOUT_S 10
 
@@ -103,17 +107,17 @@ void asBuzzerInit()
 
     // return;
 
-    pwmSeq[0] = PWM_CH0_DUTY;
-    pwmSeq[1] = PWM_CH0_DUTY;
-    pwmSeq[2] = PWM_CH0_DUTY;
-    pwmSeq[3] = PWM_CH0_DUTY;
+    pwmSeq[0] = PWM_CH0_DUTY_F1;
+    pwmSeq[1] = PWM_CH0_DUTY_F1;
+    pwmSeq[2] = PWM_CH0_DUTY_F1;
+    pwmSeq[3] = PWM_CH0_DUTY_F1;
     NRF_PWM0->PSEL.OUT[0] = (BUZZER_PIN << PWM_PSEL_OUT_PIN_Pos) |
                             (PWM_PSEL_OUT_CONNECT_Connected << PWM_PSEL_OUT_CONNECT_Pos);
 
     NRF_PWM0->ENABLE = (PWM_ENABLE_ENABLE_Enabled << PWM_ENABLE_ENABLE_Pos);
     NRF_PWM0->MODE = (PWM_MODE_UPDOWN_Up << PWM_MODE_UPDOWN_Pos);
     NRF_PWM0->PRESCALER = (PWM_PRESCALER_PRESCALER_DIV_1 << PWM_PRESCALER_PRESCALER_Pos);
-    NRF_PWM0->COUNTERTOP = (PWM_PERIOD << PWM_COUNTERTOP_COUNTERTOP_Pos); // 1 msec
+    NRF_PWM0->COUNTERTOP = (PWM_PERIOD_F1 << PWM_COUNTERTOP_COUNTERTOP_Pos);
     // NRF_PWM0->LOOP = (PWM_LOOP_CNT_Disabled << PWM_LOOP_CNT_Pos);
     NRF_PWM0->LOOP = (1 << PWM_LOOP_CNT_Pos);
     //  NRF_PWM0->DECODER = (PWM_DECODER_LOAD_Individual << PWM_DECODER_LOAD_Pos) |
@@ -131,6 +135,29 @@ void asBuzzerInit()
     //    NRF_PWM0->TASKS_SEQSTART[0] = 1;
 }
 
+/*Set the PWM frequency/duty and start the sequence*/
+static void buzzerStart(uint16_t period, uint16_t duty)
+{
+    pwmSeq[0] = duty;
+    pwmSeq[1] = duty;
+    pwmSeq[2] = duty;
+    pwmSeq[3] = duty;
+    NRF_PWM0->COUNTERTOP = (period << PWM_COUNTERTOP_COUNTERTOP_Pos);
+    NRF_PWM0->TASKS_SEQSTART[0] = 1;
+}
+
+/* Direct tone control, bypassing the queue/scheduler. For blocking code
+ * (e.g. as_bleBareMetal.c) where buzzer_task can't run. */
+void asBuzzerToneOn(void)
+{
+    buzzerStart(PWM_PERIOD_F1, PWM_CH0_DUTY_F1);
+}
+
+void asBuzzerToneOff(void)
+{
+    NRF_PWM0->TASKS_STOP = 1;
+}
+
 static uint32_t buzzer_task()
 {
 
@@ -144,9 +171,13 @@ static uint32_t buzzer_task()
 
     switch (operation)
     {
-    case BUZZER_ACTION_ON:
-        LOG(LVL_DEBUG, "Buzzer ON\n");
-        NRF_PWM0->TASKS_SEQSTART[0] = 1;
+    case BUZZER_ACTION_ON_F1:
+        LOG(LVL_DEBUG, "Buzzer ON F1\n");
+        buzzerStart(PWM_PERIOD_F1, PWM_CH0_DUTY_F1);
+        return APP_SCHEDULER_SCHEDULE_ASAP;
+    case BUZZER_ACTION_ON_F2:
+        LOG(LVL_DEBUG, "Buzzer ON F2\n");
+        buzzerStart(PWM_PERIOD_F2, PWM_CH0_DUTY_F2);
         return APP_SCHEDULER_SCHEDULE_ASAP;
     case BUZZER_ACTION_OFF:
         LOG(LVL_DEBUG, "Buzzer OFF\n");
@@ -159,6 +190,8 @@ static uint32_t buzzer_task()
         return BUZZER_SEQUENCE_TIME_DELAY_SHORT_MS;
     case BUZZER_ACTION_DELAY_LONG:
         return BUZZER_SEQUENCE_TIME_DELAY_LONG_MS;
+    case BUZZER_ACTION_DELAY_SUPER_SHORT:
+        return BUZZER_SEQUENCE_TIME_DELAY_SUPER_SHORT_MS;
     }
     // We should never arrive here
     lib_state->stopStack();
@@ -168,7 +201,7 @@ static uint32_t buzzer_task()
 void asBuzzerBeep()
 {
     bool ongoingOperation = !buzzerQueueIsEmpty();
-    buzzerQueuePut(BUZZER_ACTION_ON);
+    buzzerQueuePut(BUZZER_ACTION_ON_F1);
     buzzerQueuePut(BUZZER_ACTION_DELAY);
     buzzerQueuePut(BUZZER_ACTION_OFF);
     if (!ongoingOperation)
@@ -188,7 +221,7 @@ void asBuzzerBeeps(int8_t beeps)
     bool ongoingOperation = !buzzerQueueIsEmpty();
     while (beeps-- > 0)
     {
-        buzzerQueuePut(BUZZER_ACTION_ON);
+        buzzerQueuePut(BUZZER_ACTION_ON_F1);
         buzzerQueuePut(BUZZER_ACTION_DELAY_SHORT);
         buzzerQueuePut(BUZZER_ACTION_OFF);
         buzzerQueuePut(BUZZER_ACTION_DELAY_LONG);
@@ -199,10 +232,26 @@ void asBuzzerBeeps(int8_t beeps)
     }
 }
 
-void asBuzzerBeepShort()
+void asBuzzerBeepShort(bool highPitched)
 {
     bool ongoingOperation = !buzzerQueueIsEmpty();
-    buzzerQueuePut(BUZZER_ACTION_ON);
+    buzzerQueuePut(highPitched ? BUZZER_ACTION_ON_F2 : BUZZER_ACTION_ON_F1);
+    buzzerQueuePut(BUZZER_ACTION_DELAY_SHORT);
+    buzzerQueuePut(BUZZER_ACTION_OFF);
+    if (!ongoingOperation)
+    {
+        App_Scheduler_addTask_execTime(buzzer_task, APP_SCHEDULER_SCHEDULE_ASAP, BUZZER_TASK_EXECUTION);
+    }
+}
+
+void asBuzzerBeepDoubleShort()
+{
+    bool ongoingOperation = !buzzerQueueIsEmpty();
+    buzzerQueuePut(BUZZER_ACTION_ON_F1);
+    buzzerQueuePut(BUZZER_ACTION_DELAY_SHORT);
+    buzzerQueuePut(BUZZER_ACTION_OFF);
+    buzzerQueuePut(BUZZER_ACTION_DELAY_SHORT);
+    buzzerQueuePut(BUZZER_ACTION_ON_F1);
     buzzerQueuePut(BUZZER_ACTION_DELAY_SHORT);
     buzzerQueuePut(BUZZER_ACTION_OFF);
     if (!ongoingOperation)
@@ -214,7 +263,7 @@ void asBuzzerBeepShort()
 void asBuzzerBeepLong()
 {
     bool ongoingOperation = !buzzerQueueIsEmpty();
-    buzzerQueuePut(BUZZER_ACTION_ON);
+    buzzerQueuePut(BUZZER_ACTION_ON_F1);
     buzzerQueuePut(BUZZER_ACTION_DELAY_LONG);
     buzzerQueuePut(BUZZER_ACTION_OFF);
     if (!ongoingOperation)
@@ -223,7 +272,51 @@ void asBuzzerBeepLong()
     }
 }
 
+#define BUZZER_RETRIEVAL_PERIOD_MS 1000
+
+static uint32_t retrievalSecondsLeft = 0;
+static bool retrievalActive = false;
+
+static uint32_t buzzer_retrieval_task()
+{
+    if (retrievalSecondsLeft == 0)
+    {
+        LOG(LVL_DEBUG, "Buzzer retrieval done\n");
+        retrievalActive = false;
+        return APP_SCHEDULER_STOP_TASK;
+    }
+
+    retrievalSecondsLeft--;
+    // asBuzzerBeep();
+    asBuzzerBeepShort(false);
+    return BUZZER_RETRIEVAL_PERIOD_MS;
+}
+
+/*Beep once per second for retrievalSeconds. Calling while active restarts the duration*/
+void asBuzzerRetrieval(uint32_t retrievalSeconds)
+{
+    retrievalSecondsLeft = retrievalSeconds;
+    if (!retrievalActive && retrievalSeconds > 0)
+    {
+        LOG(LVL_DEBUG, "Buzzer retrieval start %lu s\n", retrievalSeconds);
+        retrievalActive = true;
+        App_Scheduler_addTask_execTime(buzzer_retrieval_task, APP_SCHEDULER_SCHEDULE_ASAP, BUZZER_TASK_EXECUTION);
+    }
+}
+
 bool asBuzzerActionOngoing()
 {
     return (lib_time->getTimestampS() - buzzerActionStart) < BUZZER_ACTION_TIMEOUT_S;
+}
+
+void asBuzzerBeepSuperShort()
+{
+    bool ongoingOperation = !buzzerQueueIsEmpty();
+    buzzerQueuePut(BUZZER_ACTION_ON_F1);
+    buzzerQueuePut(BUZZER_ACTION_DELAY_SUPER_SHORT);
+    buzzerQueuePut(BUZZER_ACTION_OFF);
+    if (!ongoingOperation)
+    {
+        App_Scheduler_addTask_execTime(buzzer_task, APP_SCHEDULER_SCHEDULE_ASAP, BUZZER_TASK_EXECUTION);
+    }
 }

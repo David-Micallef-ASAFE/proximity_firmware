@@ -23,3 +23,18 @@ APP_LED=yes
 
 #Wirepas Role - //Subnode Low Energy - see wms_settings.h
 asafe_wirepas_role=0x02 
+
+config_nfct_pins_as_gpios=no
+
+#Proximity App Settings
+AS_RTLS_ROLE=tag
+AS_RTLS_MODE=sr
+
+#Positioning Mode (only relevant for SR) - wirepas or ble
+AS_RTLS_POSITIONING_MODE=wirepas     
+
+AS_RTLS_DEFAULT_UPDATE_RATE_SECONDS=86400
+AS_RTLS_DEFAULT_UPDATE_RATE_MOTION_SECONDS=10
+
+#Manufacturing
+APP_MANUFACTURING=yes
