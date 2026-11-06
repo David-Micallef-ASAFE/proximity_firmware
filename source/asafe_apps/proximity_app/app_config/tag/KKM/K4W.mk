@@ -1,7 +1,10 @@
 #This is what internally (RedLore) is known as the Find it tag 3
 #Minew MBT02 - Asset Tag SR - With Retrieval
-# app_specific_area_id=0xA20003  << This was a mistake as it clashes with the E9.  We will move it to another area_id
-app_specific_area_id=0xA20005
+# Shares 0xA20003 with the E9 by mistake, but deployed devices use it so it must stay.
+# OTAP does not clash: the full area ID includes HW_VARIANT_ID, so K4W (nrf52833) = 0xA2000309
+# and E9 (nrf52832) = 0xA2000303. Distinguish them in reporting via asafe_device_type.
+# Changing this would require a bootloader updater OTAP on all deployed K4Ws.
+app_specific_area_id=0xA20003
 #A2 = ASAFE, 0003 = K4W
 
 #ASAFE Device Type - This was brought over from RedLore.  Might be reviewed with ASAFE

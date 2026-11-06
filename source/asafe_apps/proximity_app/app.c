@@ -22,6 +22,7 @@
 
 #include "as_provisioning.h"
 #include "as_status.h"
+#include "as_battery.h"
 
 #include "as_lis3dh.h"
 #include "as_led.h"
@@ -58,6 +59,8 @@
 #ifdef APP_BUTTON
 #include "button.h"
 #endif
+
+#define MANUFACTURING_NETWORK_ADDRESS 0x000002
 
 #define DEBUG_LOG_MODULE_NAME "PROXIMITY_APP"
 /** To activate logs, configure the following line with "LVL_INFO". */
@@ -110,9 +113,9 @@ static void unProvisionPrepareForProduction()
         memcpy(asProximitySettings.pskKey, provisionKeySwap, 32);
         // Switch to inventory
         asProximitySettings.mode = AS_MODE_INVENTORY;
-        // Unprovision and trigger reset;
         lib_settings->resetAll();
         // Reinit the settings;
+        lib_settings->setNodeRole(APP_LIB_SETTINGS_ROLE_SUBNODE_LE);
         asStorageWriteProximitySettings();
         // Done
         return;
@@ -221,6 +224,9 @@ void App_init(const app_global_functions_t *functions)
     /*Read storage settings*/
     asStorageInit();
 
+    /*Battery measurement (direct VDD or divider, per board.h)*/
+    asBatteryInit();
+
 /*Initialize Hardware that needs to be put into sleep/low power conditions*/
 /*Note that this is based on the device type*/
 #ifdef CONFIG_NFCT_PINS_AS_GPIOS
@@ -268,16 +274,16 @@ void App_init(const app_global_functions_t *functions)
     asBuzzerInit();
 #endif
 
+    LOG(LVL_INFO, "Battery %d mV", asBatteryGetMv());
+
     // We place this here to ensure that we do not have the stack started
     unProvisionPrepareForProduction();
 
     /*Its important that at this stage both the button and the NFC are working to enable the device to be switched between modes*/
     if (asProximitySettings.mode == AS_MODE_INVENTORY)
     {
-        // UWB needs to be active to ensure chipset is in sleep when device is not yet provisioned
-#ifdef APP_UWB
-        asTimerInit();
-#endif
+        // The DW3000 was already put to sleep by asUWBInit. The UWB timer is deliberately NOT started here:
+        // its periodic sleep check toggles the DW3000 CS line (which wakes it) and re-opens the SPIM.
         /*Go into low power*/
         startLowPower();
         return;
@@ -287,8 +293,19 @@ void App_init(const app_global_functions_t *functions)
     if (Local_provisioning_is_provisioned())
     {
 
-        /*Start provisioning system*/
-        asProvisioningInit();
+        /*Start provisioning system only on devices that require it*/
+        switch (ASAFE_DEVICE_TYPE)
+        {
+        case DEVICE_TYPE_ASAFE_JIG:
+        case DEVICE_TYPE_ASAFE_ANCHOR_HR:
+        case DEVICE_TYPE_ASAFE_ASSET_TAG_HR_WITH_RETRIEVAL:
+        case DEVICE_TYPE_ASAFE_ASSET_TAG_SR_LARGE:
+            LOG(LVL_INFO, "Provisioning Init");
+            asProvisioningInit();
+            break;
+        default:
+            break;
+        }
 
         /*Initialize the Random Seed*/
         lib_settings->getNodeAddress(&nodeSerialNumber);
@@ -317,14 +334,14 @@ void App_init(const app_global_functions_t *functions)
     else
     {
         LOG(LVL_INFO, "Provisioning Not Yet Done");
+        //   asStorageWriteProximitySettings();
 
-        // UWB needs to be active to ensure chipset is in sleep when device is not yet provisioned
-#ifdef APP_UWB
-        asTimerInit();
-#endif
+        // The DW3000 was already put to sleep by asUWBInit and the UWB timer is not started (see inventory mode above).
+        // On provisioning success the node restarts into the provisioned path, which starts the UWB timer.
 
         // Wait 1 minute in low power before activating the stack.  This gives manufacturing time to resort back
         startLowPower();
-        App_Scheduler_addTask_execTime(provisioningDelayedStartTask, (PROVISIONING_START_DELAY_S * 1000), 500);
+        // App_Scheduler_addTask_execTime(provisioningDelayedStartTask, (PROVISIONING_START_DELAY_S * 1000), 500);
+        App_Scheduler_addTask_execTime(provisioningDelayedStartTask, (5 * 1000), 500);
     }
 }

@@ -359,9 +359,9 @@ void asUWBInit()
     /*Initialize the GPIOs used in SPI*/
     asSPIInit();
 
-    // Initialize GPIO for DW3000
-    nrf_gpio_cfg_output(DW_RST_PIN);
-    nrf_gpio_pin_set(DW_RST_PIN);
+    // RSTn must never be driven high externally (the DW3000 drives it itself). Leave it released;
+    // reset_DW1000() only drives it low for the reset pulse.
+    nrf_gpio_cfg_input(DW_RST_PIN, NRF_GPIO_PIN_NOPULL);
 
     /*Wakeup the DW1000*/
     port_wakeup_dw1000();

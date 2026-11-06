@@ -203,9 +203,11 @@ int32_t writetospiwithcrc(uint16_t headerLength, const uint8_t *headerBuffer, ui
  * */
 void reset_DW1000(void)
 {
+  // Drive RSTn low only for the reset pulse, then release it (never drive it high)
   nrf_gpio_pin_clear(DW_RST_PIN);
+  nrf_gpio_cfg_output(DW_RST_PIN);
   delay(2);
-  nrf_gpio_pin_set(DW_RST_PIN);
+  nrf_gpio_cfg_input(DW_RST_PIN, NRF_GPIO_PIN_NOPULL);
   delay(2);
 }
 

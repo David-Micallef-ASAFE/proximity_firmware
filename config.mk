@@ -16,12 +16,12 @@ app_name=proximity_app
 # target_board=asMBT02
 # target_board=asE9
 # target_board=asC10
-# target_board=asK4W
+target_board=asK4W
 # target_board=asC3W
 # target_board=asJIG
 # target_board=asAnchorHR
 # target_board=asAssetTagHRWithRetrieval
-target_board=asAssetTagSRLarge
+# target_board=asAssetTagSRLarge
 
 
 # Version of the SDK

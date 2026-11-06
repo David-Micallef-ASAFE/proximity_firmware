@@ -50,6 +50,9 @@ SRCS += $(SRCS_PATH)as_provisioning.c
 #ASAFE Status
 SRCS += $(SRCS_PATH)as_status.c
 
+#ASAFE Battery
+SRCS += $(SRCS_PATH)as_battery.c
+
 #ASAFE Wirepas Connector
 SRCS += $(SRCS_PATH)as_wirepas.c
 

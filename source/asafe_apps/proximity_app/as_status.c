@@ -20,6 +20,7 @@
 #include "as_types.h"
 #include "as_wirepas.h"
 #include "as_proximity.h"
+#include "as_battery.h"
 
 #define DEBUG_LOG_MODULE_NAME "AS STATUS"
 #define DEBUG_LOG_MAX_LEVEL LVL_INFO
@@ -28,7 +29,7 @@
 
 #define STATUS_TASK_PERIOD_SECONDS (10)
 // #define STATUS_UPDATE_PERIOD_SECONDS (3600 * 24)
-#define STATUS_UPDATE_PERIOD_SECONDS (60) // For Testing only
+#define STATUS_UPDATE_PERIOD_SECONDS (10) // For Testing only
 
 statusMsg_t statusMessage;
 
@@ -62,8 +63,10 @@ static uint32_t asStatusTask()
 
     uint8_t wirepasRole;
 
+    // if (timestampLastStatusTransmit == 0 ||
+    //     (lib_time->getTimestampS() - timestampLastStatusTransmit) > asProximitySettings.heartbeatPeriodSeconds)
     if (timestampLastStatusTransmit == 0 ||
-        (lib_time->getTimestampS() - timestampLastStatusTransmit) > asProximitySettings.heartbeatPeriodSeconds)
+        (lib_time->getTimestampS() - timestampLastStatusTransmit) > 10)
     {
         LOG(LVL_INFO, "Sending status update");
         /*Update the timestamp*/
@@ -111,7 +114,7 @@ static uint32_t asStatusTask()
             break;
         }
 
-        statusMessage.vbat = Mcu_voltageGet();
+        statusMessage.vbat = asBatteryGetMv();
 
         asWirepasSend((uint8_t *)&statusMessage, sizeof(statusMessage), srcEndpoint, ASAFE_ENDPOINT_STATUS_DST, APP_LIB_DATA_QOS_NORMAL);
     }

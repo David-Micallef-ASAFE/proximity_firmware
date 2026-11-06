@@ -60,7 +60,7 @@
 // List of GPIO pins
 #define BOARD_GPIO_PIN_LIST \
     {                       \
-        13,                 \
+        4,                  \
         3,                  \
         NRF_GPIO_PIN_MAP(1, 9)}
 
@@ -77,6 +77,11 @@
 
 // Active internal pull-up for buttons
 #define BOARD_BUTTON_INTERNAL_PULL true
+
+// Battery measured through a divider (VDD is behind an LDO). See as_battery.h
+#define BOARD_VBAT_PIN 5 // AIN3
+#define BOARD_VBAT_R_TOP_KOHM 1000    // VBAT -> AIN3
+#define BOARD_VBAT_R_BOTTOM_KOHM 1000 // AIN3 -> GND
 
 // The board supports DCDC (#define BOARD_SUPPORT_DCDC)
 // Since SDK v1.2 (bootloader > v7) this option has been move to

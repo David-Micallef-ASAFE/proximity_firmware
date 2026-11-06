@@ -28,6 +28,7 @@
 #include "hal_api.h"
 #include "local_provisioning.h"
 #include "as_bleBareMetal.h"
+#include "as_battery.h"
 #ifdef APP_BUZZER
 #include "as_buzzer.h"
 #endif
@@ -93,11 +94,10 @@ static uint8_t advPdu[2 + MAX_ADV_PAYLOAD];
 /* Packet construction                                                 */
 /* ------------------------------------------------------------------ */
 
-/* Battery voltage in mV. Extend here for devices that measure the
- * battery differently. */
+/* Battery voltage in mV (as_battery handles direct VDD vs divider boards) */
 static uint16_t getVoltage(void)
 {
-    return Mcu_voltageGet();
+    return asBatteryGetMv();
 }
 
 /* Device state flags carried in the instance flags byte */

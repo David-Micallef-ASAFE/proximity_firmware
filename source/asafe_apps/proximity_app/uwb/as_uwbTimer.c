@@ -15,6 +15,7 @@
 #include "board.h"
 
 #include "as_uwb.h"
+#include "as_spi.h"
 #include "as_proximity.h"
 
 #include "as_ranging.h"
@@ -319,10 +320,20 @@ uint32_t uwbChipsetControlTask()
 bool requestMotionScan;
 bool requestStationaryScan;
 
+/*
+ * Period of the UWB sleep guard while UWB is idle.
+ * A sleeping DW3000 cannot be queried without waking it (DWT_WAKE_CSN: any CS low edge is a wake request),
+ * so instead of polling its state, it is periodically re-initialised, which always ends with it in sleep.
+ */
+#define UWB_SLEEP_GUARD_PERIOD_S 600
+
 uint32_t uwbReInitTask()
 {
     LOG(LVL_INFO, "UWB-REINIT");
+    // asUWBInit resets the DW3000 and always ends by putting it to sleep
     asUWBInit();
+    // The SPIM is left enabled by asUWBInit, close it. It is re-opened by the next wakeup.
+    asSPIClose();
     return APP_SCHEDULER_STOP_TASK;
 }
 
@@ -351,6 +362,7 @@ static uint32_t getDeviceOffset(uwbNborSlot_t *nborSlot)
  */
 static uint32_t timerTickTask()
 {
+
     uint32_t currentTimestamp = lib_time->getTimestampS();
     static uint32_t lastConnectionToSinkTimestamp = 0;
     static uint32_t lastSleepCheckTimestamp = 0;
@@ -372,21 +384,18 @@ static uint32_t timerTickTask()
     }
 
     // WP connection and UWB Operation
-    if ((!asWirepasSinkRouteEstablished() && (lib_time->getTimestampS() - lastConnectionToSinkTimestamp) > WIREPAS_DISCONNECTED_TIME_SECONDS) || !Local_provisioning_is_provisioned() || !asProximitySettings.uwbOperationEnabled || asProximitySettings.mode == AS_MODE_INVENTORY)
+    if ((!asWirepasSinkRouteEstablished() && (lib_time->getTimestampS() - lastConnectionToSinkTimestamp) > WIREPAS_DISCONNECTED_TIME_SECONDS) || !asProximitySettings.uwbOperationEnabled || asProximitySettings.mode == AS_MODE_INVENTORY)
     // if ((!asWirepasSinkRouteEstablished() && (lib_time->getTimestampS() - lastConnectionToSinkTimestamp) > WIREPAS_DISCONNECTED_TIME_SECONDS))
     {
         // LOG(LVL_INFO, "WP Disconnected");
         //  Ensure device is in sleep.
         if (uwbChipsetTaskRequested == UWB_CHIPSET_REQUEST_IDLE)
         {
-            if ((currentTimestamp - lastSleepCheckTimestamp) > 10)
+            if ((currentTimestamp - lastSleepCheckTimestamp) > UWB_SLEEP_GUARD_PERIOD_S)
             {
                 lastSleepCheckTimestamp = currentTimestamp;
-                LOG(LVL_INFO, "Check UWB Sleep");
-                if (!asUWBIsSleep())
-                {
-                    App_Scheduler_addTask_execTime(uwbReInitTask, APP_SCHEDULER_SCHEDULE_ASAP, 500);
-                }
+                LOG(LVL_INFO, "UWB Sleep Guard");
+                App_Scheduler_addTask_execTime(uwbReInitTask, APP_SCHEDULER_SCHEDULE_ASAP, 500);
             }
         }
     }
@@ -444,14 +453,11 @@ static uint32_t timerTickTask()
         }
         else if (uwbChipsetTaskRequested == UWB_CHIPSET_REQUEST_IDLE)
         {
-            if ((currentTimestamp - lastSleepCheckTimestamp) > 10)
+            if ((currentTimestamp - lastSleepCheckTimestamp) > UWB_SLEEP_GUARD_PERIOD_S)
             {
                 lastSleepCheckTimestamp = currentTimestamp;
-                LOG(LVL_INFO, "Check UWB Sleep");
-                if (!asUWBIsSleep())
-                {
-                    App_Scheduler_addTask_execTime(uwbReInitTask, APP_SCHEDULER_SCHEDULE_ASAP, 500);
-                }
+                LOG(LVL_INFO, "UWB Sleep Guard");
+                App_Scheduler_addTask_execTime(uwbReInitTask, APP_SCHEDULER_SCHEDULE_ASAP, 500);
             }
         }
 

@@ -63,7 +63,15 @@ static void shortHoldAchieved(void)
     // TODO: User feedback
     if (asProximitySettings.deviceManagementEnabled)
     {
-        LED_FLASH_SHORT(0, 1);
+        switch (ASAFE_DEVICE_TYPE)
+        {
+        case DEVICE_TYPE_KKM_K4W:
+            LED_FLASH_SHORT(1, 1);
+            break;
+        default:
+            LED_FLASH_SHORT(0, 1);
+            break;
+        }
     }
 }
 
@@ -77,7 +85,15 @@ static void longHoldAchieved(void)
     // TODO: User feedback
     if (asProximitySettings.deviceManagementEnabled)
     {
-        LED_FLASH_SHORT(0, 2);
+        switch (ASAFE_DEVICE_TYPE)
+        {
+        case DEVICE_TYPE_KKM_K4W:
+            LED_FLASH_SHORT(1, 2);
+            break;
+        default:
+            LED_FLASH_SHORT(0, 2);
+            break;
+        }
     }
 }
 

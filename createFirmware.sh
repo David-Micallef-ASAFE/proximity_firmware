@@ -304,7 +304,7 @@ write_report() {
     {
         echo "# Firmware build OUT_$DATETIME"
         echo
-        echo "- Built: $(date '+%Y-%m-%d %H:%M:%S')"
+        echo "- Built: $BUILT_AT"
         echo "- Git commit: ${sha:-unknown}${dirty:+ (uncommitted changes present)}"
         echo "- Config: $(basename "$CONF_FILE")"
         echo "- Archive: OUT_$DATETIME.zip"
@@ -342,6 +342,64 @@ write_report() {
         echo
         echo "Each device folder in the archive contains \`final_image_<app>_with_params.hex\` and the \`*.otap\` files."
     } > "$REPORT_MD"
+}
+
+# Write manifest.json (same information as the markdown report) into the
+# archive root. Built from the same row files used for the report.
+write_manifest() {
+    sha=$(git rev-parse --short HEAD 2>/dev/null)
+    dirty=$(git status --porcelain 2>/dev/null | head -n 1)
+    M_NAME="OUT_$DATETIME" M_BUILT="$BUILT_AT" M_SHA="$sha" M_DIRTY="$dirty" \
+    M_CONF="$(basename "$CONF_FILE")" M_SIZE="$COMBINED_SIZE" \
+    M_FAILED="$FAILED" M_SKIPPED="$SKIPPED" M_DUPS="$DUPLICATES" \
+    python3 -c '
+import json, os, sys
+
+def rows(path):
+    out = []
+    with open(path) as f:
+        for line in f:
+            cells = [c.strip().strip("`") for c in line.strip().strip("|").split("|")]
+            if len(cells) > 1:
+                out.append(cells)
+    return out
+
+def num(v):
+    return int(v) if v.isdigit() else v
+
+e = os.environ
+devices = [{
+    "device": c[0], "asafe_device_type": num(c[1]), "app_specific_area_id": c[2],
+    "app_printing": c[3] == "yes", "provisioning_uid": c[4], "node_role": num(c[5]),
+    "app_version": c[6], "mcu": c[7],
+    "files": sorted(os.listdir(os.path.join(sys.argv[3], c[0]))),
+} for c in rows(sys.argv[1])]
+
+manifest = {
+    "name": e["M_NAME"],
+    "built": e["M_BUILT"],
+    "git_commit": e["M_SHA"] or None,
+    "git_uncommitted_changes": bool(e["M_DIRTY"]),
+    "config": e["M_CONF"],
+    "archive": e["M_NAME"] + ".zip",
+    "errors": {"duplicate_identifiers": [l for l in e["M_DUPS"].splitlines() if l]},
+    "devices": devices,
+    "combined_otap": None,
+    "failed": e["M_FAILED"].split(),
+    "skipped": e["M_SKIPPED"].split(),
+}
+if e["M_SIZE"]:
+    manifest["combined_otap"] = {
+        "file": "combined_app.otap",
+        "size_bytes": int(e["M_SIZE"]),
+        "devices": [{"device": c[0], "app_version": c[1], "app_area_id": c[2], "app_hex": c[3]}
+                    for c in rows(sys.argv[2])],
+    }
+
+with open(os.path.join(sys.argv[3], "manifest.json"), "w") as f:
+    json.dump(manifest, f, indent=2)
+    f.write("\n")
+' "$ROWS_FILE" "$COMBINED_ROWS_FILE" "$STAGE_DIR"
 }
 
 create_archive() {
@@ -471,7 +529,12 @@ if [ -n "$OK" ]; then
     fi
     echo
 
+    BUILT_AT=$(date '+%Y-%m-%d %H:%M:%S')
     write_report
+    if ! write_manifest; then
+        echo "!!! Failed to write manifest.json"
+        FAILED="$FAILED (manifest)"
+    fi
     if create_archive; then
         echo "Archive: $ARCHIVE"
         echo "Report:  $REPORT_MD"

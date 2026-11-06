@@ -60,7 +60,7 @@
 // List of GPIO pins
 #define BOARD_GPIO_PIN_LIST \
     {                       \
-        13,                 \
+        4,                  \
         3,                  \
         NRF_GPIO_PIN_MAP(1, 9)}
 

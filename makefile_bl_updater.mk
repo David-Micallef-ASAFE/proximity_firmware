@@ -24,6 +24,20 @@ else
 RESET_AREAS :=
 endif
 
+# The app config (included via makefile_common.mk) enables app peripheral
+# drivers (GPIO, I2C, SPI, button, ...). Those drivers depend on the Wirepas
+# stack API (api.h / lib_system), which does not exist in the bootloader
+# updater, so disable them here. Only the base HAL is needed to link.
+HAL_GPIO := no
+HAL_BUTTON := no
+HAL_LED := no
+HAL_I2C := no
+HAL_SPI := no
+HAL_UART := no
+HAL_VOLTAGE := no
+HAL_PERSISTENT_MEMORY := no
+HAL_HW_DELAY := no
+
 # Include HAL driver code, needed to link bootloader updater
 #
 # This populates SRCS and ASM_SRCS

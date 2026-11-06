@@ -33,6 +33,7 @@
 
 #include "as_manufacturing.h"
 #include "as_storage.h"
+#include "as_battery.h"
 
 #include "as_led.h"
 
@@ -182,7 +183,7 @@ static void scanend_cb(app_lib_stack_event_e event, void *param_p)
             rpeMessage.periodHeader.maxG = scanPeriodMaxG;
             rpeMessage.periodHeader.sequence = seq++;
             rpeMessage.periodHeader.type = previousScanReason;
-            rpeMessage.periodHeader.battery = Mcu_voltageGet();
+            rpeMessage.periodHeader.battery = asBatteryGetMv();
 
             LOG(LVL_INFO, "Sending RPE Message with %d nbors", nborIdx);
             LOG(LVL_INFO, "Duration %d, MaxG %d, Type %d", scanPeriodSeconds, scanPeriodMaxG, previousScanReason);
