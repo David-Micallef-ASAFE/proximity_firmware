@@ -23,6 +23,7 @@
 #include "i2c.h"
 
 void asLIS3DHInit();
+bool asLIS3DHEnableMotionDetect();
 bool asLIS3DHInMotion();
 
 #endif /* #define __AS_LIS3DH_H_ */

@@ -3,8 +3,8 @@
 | | |
 |---|---|
 | **Status** | Draft |
-| **Version** | 0.21 |
-| **Last updated** | 2026-10-26 |
+| **Version** | 0.22 |
+| **Last updated** | 2026-11-09 |
 | **Owner** | David Micallef |
 
 ---
@@ -141,17 +141,21 @@ This is the master list of data keys, and it will be updated as the protocol gro
 
 ### 6.1 Node Role Values (Key 3)
 
-The value is a base role combined (bitwise OR) with optional flags, following the Wirepas stack role encoding. *Check these values against the Wirepas SDK version in use.*
+The value is the Wirepas stack node role (`app_lib_settings_role_e` in the Wirepas SDK `wms_settings.h`), sent unchanged. Only the values below are valid. Any other value is rejected with `OUT_OF_RANGE`.
 
-| Bits | Value | Meaning |
+| Value | Role | Mode |
 |---|---|---|
-| Base role | `0x01` | Sink |
-| | `0x02` | Headnode (router) |
-| | `0x03` | Subnode (non-router) |
-| Flag | `0x10` | Low-latency |
-| Flag | `0x80` | Autorole |
+| `0x00` | Sink | Low Energy |
+| `0x10` | Sink | Low Latency |
+| `0x01` | Headnode (router) | Low Energy |
+| `0x11` | Headnode (router) | Low Latency |
+| `0x02` | Subnode (non-router) | Low Energy |
+| `0x12` | Subnode (non-router) | Low Latency |
+| `0x42` | Autorole | Low Energy |
+| `0x52` | Autorole | Low Latency |
+| `0x04` | Advertiser | Low Energy (implicit) |
 
-Example: `0x82` = Headnode + Autorole.
+Bit `0x10` marks a Low Latency role. The Wirepas stack's default role is Autorole Low Energy (`0x42`).
 
 ### 6.2 Command Keys
 
@@ -219,8 +223,8 @@ A3 20 01 21 07 23 83 01 02 03
 
 **Response (Device → Cloud) — 18 bytes**
 ```
-{-1: 3, -2: 7, -3: 0, 1: 0x123456, 2: 18, 3: 0x82}
-A6 20 03 21 07 22 00 01 1A 00 12 34 56 02 12 03 18 82
+{-1: 3, -2: 7, -3: 0, 1: 0x123456, 2: 18, 3: 0x42}
+A6 20 03 21 07 22 00 01 1A 00 12 34 56 02 12 03 18 42
 ```
 
 ### 7.2 Write network keys
@@ -407,3 +411,4 @@ Keys 5, 6 and 8 carry secret key material in clear CBOR. This protocol assumes t
 | 0.19 | 2026-10-22 | Added key 15 Mode (Device, R/W): 0 = Inventory, 1 = Run (§6.3). |
 | 0.20 | 2026-10-22 | Added key 16 Ping command (§6.2) and example 7.7. |
 | 0.21 | 2026-10-26 | Added keys 17 UWB Operation Enabled and 18 Device Management Enabled (Device, Boolean, R/W), and example 7.8. |
+| 0.22 | 2026-11-09 | Node Role (key 3, §6.1) now uses the Wirepas SDK `app_lib_settings_role_e` values exactly; the earlier base-role + flag encoding (e.g. `0x82`) was wrong. Example 7.1 updated to `0x42`. |

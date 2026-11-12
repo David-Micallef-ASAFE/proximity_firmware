@@ -63,10 +63,8 @@ static uint32_t asStatusTask()
 
     uint8_t wirepasRole;
 
-    // if (timestampLastStatusTransmit == 0 ||
-    //     (lib_time->getTimestampS() - timestampLastStatusTransmit) > asProximitySettings.heartbeatPeriodSeconds)
     if (timestampLastStatusTransmit == 0 ||
-        (lib_time->getTimestampS() - timestampLastStatusTransmit) > 10)
+        (lib_time->getTimestampS() - timestampLastStatusTransmit) > asProximitySettings.heartbeatPeriodSeconds)
     {
         LOG(LVL_INFO, "Sending status update");
         /*Update the timestamp*/

@@ -78,15 +78,22 @@ static asProtoStatus_e writeNetworkChannel(const asProtoValue_t *value)
 /* Key 3 - Node Role (R/W, Wirepas) */
 static asProtoStatus_e validateNodeRole(const asProtoValue_t *value)
 {
-    // Base role 0x01..0x03, optional flags 0x10 (low-latency) and 0x80 (autorole) (§6.1)
-    uint8_t baseRole = value->u32 & 0x0F;
-    uint8_t flags = value->u32 & 0xF0;
-
-    if (baseRole < 0x01 || baseRole > 0x03 || (flags & ~(0x10 | 0x80)) != 0)
+    // Only the Wirepas stack role values are accepted (app_lib_settings_role_e, §6.1)
+    switch (value->u32)
     {
+    case APP_LIB_SETTINGS_ROLE_SINK_LE:
+    case APP_LIB_SETTINGS_ROLE_SINK_LL:
+    case APP_LIB_SETTINGS_ROLE_HEADNODE_LE:
+    case APP_LIB_SETTINGS_ROLE_HEADNODE_LL:
+    case APP_LIB_SETTINGS_ROLE_SUBNODE_LE:
+    case APP_LIB_SETTINGS_ROLE_SUBNODE_LL:
+    case APP_LIB_SETTINGS_ROLE_AUTOROLE_LE:
+    case APP_LIB_SETTINGS_ROLE_AUTOROLE_LL:
+    case APP_LIB_SETTINGS_ROLE_ADVERTISER:
+        return AS_PROTO_STATUS_OK;
+    default:
         return AS_PROTO_STATUS_OUT_OF_RANGE;
     }
-    return AS_PROTO_STATUS_OK;
 }
 
 static asProtoStatus_e readNodeRole(asProtoValue_t *value)

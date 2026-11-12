@@ -215,7 +215,7 @@ load_make_vars() {
 
 # Print a variable as resolved by make (call load_make_vars first)
 make_var() {
-    printf '%s\n' "$MAKE_VARS" | sed -n "s/^$1=//p"
+    printf '%s\n' "$MAKE_VARS" | sed -n "s/^$1=[[:space:]]*//; T; s/[[:space:]]*\$//; p"
 }
 
 # Copy a successfully built device's outputs into the staging folder and
@@ -235,17 +235,25 @@ package_device() {
     load_make_vars
     dev_type=$(make_var asafe_device_type)
     area_id=$(make_var app_specific_area_id)
+    app_area_id=$(make_var app_area_id)     # app_specific_area_id + HW_VARIANT_ID
     printing=$(make_var APP_PRINTING)
     version=$(sed -n 's/^app_version=//p' "$build_dir/version.txt" 2>/dev/null)
 
-    printf '| %s | %s | %s | %s | %s | %s | %s | %s |\n' \
-        "$CONFIG" "${dev_type:-?}" "${area_id:-?}" "${printing:-no}" \
+    printf '| %s | %s | %s | %s | %s | %s | %s | %s | %s |\n' \
+        "$CONFIG" "${dev_type:-?}" "${area_id:-?}" "${app_area_id:-?}" "${printing:-no}" \
         "$PROVISION_UID" "$NODE_ROLE" "${version:-?}" "$DEVICE" >> "$ROWS_FILE"
     echo "--> packaged into $CONFIG/"
 
+    # Configuration table row (markdown only): make variables, then conf settings
+    cfg_row="| $CONFIG |"
+    for v in $CONFIG_MAKE_VARS; do
+        val=$(make_var "$v")
+        cfg_row="$cfg_row ${val:--} |"
+    done
+    printf '%s %s | %s |\n' "$cfg_row" "$PROVISION_UID" "$NODE_ROLE" >> "$CONFIG_ROWS_FILE"
+
     # Queue this device's app for the combined OTAP
     if [ "$(get_setting COMBINED_OTAP)" = "yes" ]; then
-        app_area_id=$(make_var app_area_id)     # app_specific_area_id + HW_VARIANT_ID
         app_hex="$build_dir/$APP_NAME.hex"
         if [ -z "$version" ] || [ -z "$app_area_id" ] || [ ! -f "$app_hex" ]; then
             echo "Cannot add to combined OTAP (version='$version' app_area_id='$app_area_id' hex='$app_hex')"
@@ -283,18 +291,35 @@ create_combined_otap() {
     echo "--> combined_app.otap ($COMBINED_SIZE bytes)"
 }
 
-# Print one line per asafe_device_type / app_specific_area_id value that is
-# shared by more than one device in this run (empty output = all unique)
+# ERROR: print one line per asafe_device_type / app_area_id (including the
+# HW variant) shared by more than one device (empty output = all unique)
 find_duplicates() {
     awk -F'|' '
         function trim(s) { gsub(/^[ \t]+|[ \t]+$/, "", s); return s }
         {
-            dev = trim($2); type = trim($3); area = trim($4)
-            if (type != "?") { n["asafe_device_type " type]++;    d["asafe_device_type " type]    = d["asafe_device_type " type] ", " dev }
-            if (area != "?") { n["app_specific_area_id " area]++; d["app_specific_area_id " area] = d["app_specific_area_id " area] ", " dev }
+            dev = trim($2); type = trim($3); full = trim($5)
+            if (type != "?") { n["asafe_device_type " type]++; d["asafe_device_type " type] = d["asafe_device_type " type] ", " dev }
+            if (full != "?") { n["app_area_id " full]++;       d["app_area_id " full]       = d["app_area_id " full] ", " dev }
         }
         END {
             for (k in n) if (n[k] > 1) print k " is used by: " substr(d[k], 3)
+        }' "$ROWS_FILE" | sort
+}
+
+# WARNING: print one line per app_specific_area_id shared by devices whose
+# full app_area_id still differs because of the HW variant
+find_shared_base() {
+    awk -F'|' '
+        function trim(s) { gsub(/^[ \t]+|[ \t]+$/, "", s); return s }
+        {
+            dev = trim($2); base = trim($4); full = trim($5)
+            if (base == "?" || full == "?") next
+            n[base]++; d[base] = d[base] ", " dev " (" full ")"
+            if (!((base, full) in seen)) { seen[base, full] = 1; distinct[base]++ }
+        }
+        END {
+            for (b in n) if (n[b] > 1 && distinct[b] > 1)
+                print "app_specific_area_id " b " is used by: " substr(d[b], 3)
         }' "$ROWS_FILE" | sort
 }
 
@@ -312,15 +337,35 @@ write_report() {
         if [ -n "$DUPLICATES" ]; then
             echo "## ERROR: duplicate device identifiers"
             echo
-            echo "asafe_device_type and app_specific_area_id must be unique across all devices."
+            echo "asafe_device_type and app_area_id (app_specific_area_id + HW variant) must be unique across all devices."
             echo "The following values are shared by more than one device:"
             echo
             printf '%s\n' "$DUPLICATES" | sed 's/^/- **/; s/ is used by:/** is used by:/'
             echo
         fi
-        echo "| Device | asafe_device_type | app_specific_area_id | APP_PRINTING | Provisioning UID | Node role | App version | MCU |"
-        echo "|---|---|---|---|---|---|---|---|"
+        if [ -n "$SHARED_BASE" ]; then
+            echo "## WARNING: shared app_specific_area_id"
+            echo
+            echo "These devices share an app_specific_area_id. Their app_area_id is still unique because the HW variant differs:"
+            echo
+            printf '%s\n' "$SHARED_BASE" | sed 's/^/- **/; s/ is used by:/** is used by:/'
+            echo
+        fi
+        echo "| Device | asafe_device_type | app_specific_area_id | app_area_id | APP_PRINTING | Provisioning UID | Node role | App version | MCU |"
+        echo "|---|---|---|---|---|---|---|---|---|"
         cat "$ROWS_FILE"
+        echo
+        echo "## Configuration"
+        echo
+        hdr="| Device |"; sep="|---|"
+        for v in $CONFIG_MAKE_VARS PROVISION_UID NODE_ROLE; do
+            hdr="$hdr $v |"; sep="$sep---|"
+        done
+        echo "$hdr"
+        echo "$sep"
+        cat "$CONFIG_ROWS_FILE"
+        echo
+        echo "PROVISION_UID and NODE_ROLE are set through $(basename "$CONF_FILE"); the others come from the app/board makefiles. \`-\` = not defined."
         if [ -n "$COMBINED_SIZE" ]; then
             echo
             echo "## Combined OTAP"
@@ -351,7 +396,7 @@ write_manifest() {
     dirty=$(git status --porcelain 2>/dev/null | head -n 1)
     M_NAME="OUT_$DATETIME" M_BUILT="$BUILT_AT" M_SHA="$sha" M_DIRTY="$dirty" \
     M_CONF="$(basename "$CONF_FILE")" M_SIZE="$COMBINED_SIZE" \
-    M_FAILED="$FAILED" M_SKIPPED="$SKIPPED" M_DUPS="$DUPLICATES" \
+    M_FAILED="$FAILED" M_SKIPPED="$SKIPPED" M_DUPS="$DUPLICATES" M_SHARED="$SHARED_BASE" \
     python3 -c '
 import json, os, sys
 
@@ -370,8 +415,8 @@ def num(v):
 e = os.environ
 devices = [{
     "device": c[0], "asafe_device_type": num(c[1]), "app_specific_area_id": c[2],
-    "app_printing": c[3] == "yes", "provisioning_uid": c[4], "node_role": num(c[5]),
-    "app_version": c[6], "mcu": c[7],
+    "app_area_id": c[3], "app_printing": c[4] == "yes", "provisioning_uid": c[5],
+    "node_role": num(c[6]), "app_version": c[7], "mcu": c[8],
     "files": sorted(os.listdir(os.path.join(sys.argv[3], c[0]))),
 } for c in rows(sys.argv[1])]
 
@@ -383,6 +428,7 @@ manifest = {
     "config": e["M_CONF"],
     "archive": e["M_NAME"] + ".zip",
     "errors": {"duplicate_identifiers": [l for l in e["M_DUPS"].splitlines() if l]},
+    "warnings": {"shared_app_specific_area_id": [l for l in e["M_SHARED"].splitlines() if l]},
     "devices": devices,
     "combined_otap": None,
     "failed": e["M_FAILED"].split(),
@@ -494,13 +540,22 @@ ROWS_FILE=$(mktemp) || exit 1
 PRINT_VARS_MK=$(mktemp) || exit 1
 COMBINED_SPECS_FILE=$(mktemp) || exit 1
 COMBINED_ROWS_FILE=$(mktemp) || exit 1
+CONFIG_ROWS_FILE=$(mktemp) || exit 1
 COMBINED_SIZE=""
-trap 'rm -rf "$STAGE_DIR" "$ROWS_FILE" "$PRINT_VARS_MK" "$COMBINED_SPECS_FILE" "$COMBINED_ROWS_FILE"' EXIT
+trap 'rm -rf "$STAGE_DIR" "$ROWS_FILE" "$PRINT_VARS_MK" "$COMBINED_SPECS_FILE" "$COMBINED_ROWS_FILE" "$CONFIG_ROWS_FILE"' EXIT
+
+# Make variables shown in the markdown "Configuration" table
+CONFIG_MAKE_VARS="APP_PRINTING AS_RTLS_ROLE AS_RTLS_MODE AS_RTLS_POSITIONING_MODE \
+AS_RTLS_DEFAULT_UPDATE_RATE_SECONDS AS_RTLS_DEFAULT_UPDATE_RATE_MOTION_SECONDS \
+DEFAULT_HEARTBEAT_PERIOD_SECONDS"
 printf '%s\n' '.PHONY: __print_vars' '__print_vars:' \
     '	@echo "asafe_device_type=$(asafe_device_type)"' \
     '	@echo "app_specific_area_id=$(app_specific_area_id)"' \
-    '	@echo "app_area_id=$(app_area_id)"' \
-    '	@echo "APP_PRINTING=$(APP_PRINTING)"' > "$PRINT_VARS_MK"
+    '	@echo "app_area_id=$(app_area_id)"' > "$PRINT_VARS_MK"
+# CONFIG_MAKE_VARS includes APP_PRINTING, which the main table also uses
+for v in $CONFIG_MAKE_VARS; do
+    printf '\t@echo "%s=$(%s)"\n' "$v" "$v" >> "$PRINT_VARS_MK"
+done
 
 OK=""
 FAILED=""
@@ -515,8 +570,10 @@ for d in $DEVICES; do
 done
 
 DUPLICATES=""
+SHARED_BASE=""
 if [ -n "$OK" ]; then
     DUPLICATES=$(find_duplicates)
+    SHARED_BASE=$(find_shared_base)
 
     # Remove previous outputs so only this run's files remain in out/
     if [ -d "$OUT_DIR" ] && [ "$(basename "$OUT_DIR")" = "out" ]; then
@@ -548,10 +605,14 @@ fi
 echo "=================================================================="
 if [ -n "$DUPLICATES" ]; then
     echo "******************************************************************"
-    echo "WARNING: asafe_device_type / app_specific_area_id must be unique,"
-    echo "         but multiple devices share the same value:"
-    printf '%s\n' "$DUPLICATES" | sed 's/^/           /'
+    echo "ERROR: asafe_device_type / app_area_id must be unique,"
+    echo "       but multiple devices share the same value:"
+    printf '%s\n' "$DUPLICATES" | sed 's/^/         /'
     echo "******************************************************************"
+fi
+if [ -n "$SHARED_BASE" ]; then
+    echo "Warning: shared app_specific_area_id (app_area_id differs by HW variant):"
+    printf '%s\n' "$SHARED_BASE" | sed 's/^/  /'
 fi
 [ -n "$OK" ]      && echo "Succeeded:$OK"
 [ -n "$SKIPPED" ] && echo "Skipped:  $SKIPPED"

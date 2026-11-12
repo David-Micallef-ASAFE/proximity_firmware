@@ -33,7 +33,7 @@ HAL_VOLTAGE=yes
 SHARED_DATA=yes
 
 #Printing and Debugging
-APP_PRINTING=yes
+APP_PRINTING=no
 
 # Use App Scheduler and configure it
 APP_SCHEDULER=yes
@@ -104,9 +104,11 @@ endif
 #Versions Launched
 #1.0.1.0 - Initial Version used during order of devices from Minew and KKM for proximity demo.  App simply launches the device into low power, provisions the device but has no further capabilities.  App is able to send status update
 #1.0.1.2 - Used as a version to test OTAP.  This version is flashed to the device and 1.3 is then the OTAPed version.
+#1.0.1.3 - Used internally for testing and development.
+#1.0.1.4 - Release version for ASAFE.  Manufactured Devices and OTAPed devices (KKM and MINEW) received this version in Nov 2026
 
 # App version
 app_major=1
 app_minor=0
 app_maintenance=1
-app_development=3
+app_development=4

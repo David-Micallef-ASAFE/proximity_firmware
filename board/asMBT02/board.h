@@ -33,7 +33,7 @@
 #define BOARD_BUTTON_ACTIVE_LOW true
 
 // Active internal pull-up for buttons
-#define BOARD_BUTTON_INTERNAL_PULL true
+#define BOARD_BUTTON_INTERNAL_PULL false
 
 // LED Definitions
 //  Active low polarity for LEDs

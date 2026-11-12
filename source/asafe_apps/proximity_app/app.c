@@ -140,7 +140,7 @@ static void startLowPower()
     asSPIClose();
 #endif
 
-    // LIS3DH: I2C is closed by asLIS3DHInit, the accel is powered down (anchor) or in 10Hz motion detect (tag)
+    // LIS3DH: I2C is closed by asLIS3DHInit, the accel is powered down (motion detect only runs after asLIS3DHEnableMotionDetect)
     // LEDs: left off by asLedInit
     // NFCT: left in SENSE with FIELDDETECTED/FIELDLOST interrupts enabled by asNFCInit
 
@@ -246,7 +246,7 @@ void App_init(const app_global_functions_t *functions)
 #endif
 
 #ifdef APP_LIS3DH
-    asLIS3DHInit();
+    asLIS3DHInit(); // Note that this is powered down and will not generate interrupts until asLIS3DHEnableMotionDetect() is called
 #endif
 
 #ifdef APP_LED
@@ -298,8 +298,6 @@ void App_init(const app_global_functions_t *functions)
         {
         case DEVICE_TYPE_ASAFE_JIG:
         case DEVICE_TYPE_ASAFE_ANCHOR_HR:
-        case DEVICE_TYPE_ASAFE_ASSET_TAG_HR_WITH_RETRIEVAL:
-        case DEVICE_TYPE_ASAFE_ASSET_TAG_SR_LARGE:
             LOG(LVL_INFO, "Provisioning Init");
             asProvisioningInit();
             break;
@@ -321,6 +319,13 @@ void App_init(const app_global_functions_t *functions)
         // Start the proximity application
         asProximityInit();
 
+        // Enable Motion for a tag only
+#ifdef AS_RTLS_ROLE_TAG
+#ifdef APP_LIS3DH
+        asLIS3DHEnableMotionDetect();
+#endif
+#endif
+
         // Start UWB
 #ifdef APP_UWB
         asTimerInit();
@@ -328,7 +333,7 @@ void App_init(const app_global_functions_t *functions)
 
         asWirepasInit();
 
-        // Node is provisioned, enable proxy mode
+        // Node is provisioned, enable proxy mode if required
         Stack_State_startStack();
     }
     else
@@ -341,7 +346,6 @@ void App_init(const app_global_functions_t *functions)
 
         // Wait 1 minute in low power before activating the stack.  This gives manufacturing time to resort back
         startLowPower();
-        // App_Scheduler_addTask_execTime(provisioningDelayedStartTask, (PROVISIONING_START_DELAY_S * 1000), 500);
-        App_Scheduler_addTask_execTime(provisioningDelayedStartTask, (5 * 1000), 500);
+        App_Scheduler_addTask_execTime(provisioningDelayedStartTask, (PROVISIONING_START_DELAY_S * 1000), 500);
     }
 }

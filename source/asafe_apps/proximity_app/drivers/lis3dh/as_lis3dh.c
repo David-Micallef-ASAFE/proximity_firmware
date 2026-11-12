@@ -23,6 +23,7 @@
 #include "board.h"
 
 #include "as_proximity.h"
+#include "as_led.h"
 
 #define DEBUG_LOG_MODULE_NAME "AS LIS3DH"
 #define DEBUG_LOG_MAX_LEVEL LVL_INFO
@@ -102,10 +103,10 @@ static void lis3dh_delay_us(uint32_t us)
         ;
 }
 
-#ifdef AS_RTLS_ROLE_TAG
+static bool lis3dhPresent = false;
 
 /*
- * @brief  Callback function for the interrupt pin.  This function is called when the interrupt pin goes high.  It will schedule a task to read the sensor data.
+ * @brief  Callback function for the interrupt pin.  Called on the rising edge of LIS3DH INT1 (motion detected).
  */
 static void lis3dh_event_cb(gpio_id_t id, gpio_in_event_e event)
 {
@@ -116,7 +117,6 @@ static void lis3dh_event_cb(gpio_id_t id, gpio_in_event_e event)
     asProximityMotionDetected();
 #endif
 }
-#endif
 
 bool asLIS3DHInMotion()
 {
@@ -124,11 +124,13 @@ bool asLIS3DHInMotion()
 }
 
 /*
- * @brief  Read generic device register (platform dependent)
+ * @brief  Initialize the LIS3DH: verify the device ID and leave it powered down with no interrupts enabled.
+ *         Call asLIS3DHEnableMotionDetect() to start motion detection.
  */
 void asLIS3DHInit()
 {
     uint8_t whoamI;
+    uint8_t dummy;
 
 /*Initialize the SDO pin if its defined.  Note the SDO is internally pulled up in the accel so putting it to gnd will waste energy*/
 #ifdef LIS3DH_SDO
@@ -136,19 +138,14 @@ void asLIS3DHInit()
     nrf_gpio_pin_set(LIS3DH_SDO);
 #endif
 
+    lis3dhPresent = false;
+
     asI2CHWOpen();
 
     /* Initialize mems driver interface */
     dev_ctx.write_reg = platform_write;
     dev_ctx.read_reg = platform_read;
     dev_ctx.handle = NULL;
-    /* Initialize platform specific hardware */
-
-#ifdef AS_RTLS_ROLE_TAG
-    uint8_t dummy;
-    lis3dh_int1_cfg_t int1_cfg;
-    lis3dh_ctrl_reg3_t ctrl_reg3;
-#endif
 
     /*Check device ID.  After power up the LIS3DH needs up to 5ms to boot and will not respond until then, so retry*/
     int32_t res = 0;
@@ -165,23 +162,47 @@ void asLIS3DHInit()
 
     if ((res != I2C_RES_OK) || (whoamI != LIS3DH_ID))
     {
-        // lib_state->stopStack();
         LOG(LVL_ERROR, "LIS3DH Error i2c res %d whoami 0x%02x\n", res, whoamI);
         asI2CHWClose();
         return;
     }
 
-    LOG(LVL_INFO, "LIS3DH OK\n");
+    lis3dhPresent = true;
 
-    // Still to add correct config for anchor
-#ifdef AS_RTLS_ROLE_ANCHOR
-    // Anchor does not use the Accel so simply power it down
+    /*The accel keeps its registers across an MCU-only reset, so explicitly disable the interrupt routing and generator*/
+    dummy = 0x00;
+    lis3dh_write_reg(&dev_ctx, LIS3DH_CTRL_REG3, &dummy, 1);
+    dummy = 0x00;
+    lis3dh_write_reg(&dev_ctx, LIS3DH_INT1_CFG, &dummy, 1);
+
+    /*Power down*/
     lis3dh_data_rate_set(&dev_ctx, LIS3DH_POWER_DOWN);
-    asI2CHWClose();
-    return;
-#endif
 
-#ifdef AS_RTLS_ROLE_TAG
+    asI2CHWClose();
+
+    LOG(LVL_INFO, "LIS3DH OK, powered down\n");
+}
+
+/*
+ * @brief  Enable the LIS3DH in 10Hz low power motion detection and register the INT1 interrupt.
+ *         asLIS3DHInit() must have been called first.
+ *
+ * @return true if motion detection was enabled
+ */
+bool asLIS3DHEnableMotionDetect()
+{
+    uint8_t dummy;
+    lis3dh_int1_cfg_t int1_cfg;
+    lis3dh_ctrl_reg3_t ctrl_reg3;
+
+    if (!lis3dhPresent)
+    {
+        LOG(LVL_ERROR, "LIS3DH not present, cannot enable motion detect");
+        return false;
+    }
+
+    asI2CHWOpen();
+
     /*Reset the accel*/
     dummy = 0x10;
     lis3dh_write_reg(&dev_ctx, LIS3DH_CTRL_REG0, &dummy, 1);
@@ -210,12 +231,12 @@ void asLIS3DHInit()
     lis3dh_pin_int1_config_get(&dev_ctx, &ctrl_reg3);
     ctrl_reg3.i1_ia1 = PROPERTY_ENABLE;
     lis3dh_pin_int1_config_set(&dev_ctx, &ctrl_reg3);
-    /* Interrupt 1 pin latched */
+    /* Interrupt 1 pin pulsed */
     lis3dh_int1_pin_notification_mode_set(&dev_ctx,
                                           LIS3DH_INT1_PULSED);
     /* Set full scale to 2 g */
     lis3dh_full_scale_set(&dev_ctx, LIS3DH_2g);
-    /* Set interrupt threshold to 0x10 -> 250 mg */
+    /* Set interrupt threshold to 0x06 -> ~96 mg */
     lis3dh_int1_gen_threshold_set(&dev_ctx, 0x06);
     // lis3dh_int1_gen_threshold_set(&dev_ctx, 0x0A);
     /* Set no time duration */
@@ -236,7 +257,6 @@ void asLIS3DHInit()
     asI2CHWClose();
 
     /*Initialize the Interrupt Logic*/
-
     gpio_res_e gpio_res;
     const gpio_in_cfg_t motion_mon_int_cfg =
         {
@@ -248,12 +268,10 @@ void asLIS3DHInit()
 
     if (gpio_res != GPIO_RES_OK)
     {
+        LOG(LVL_ERROR, "Cannot enable interrupt pin %d", gpio_res);
+        return false;
+    }
 
-        LOG(LVL_INFO, "Cannot enable interrupt pin %d", gpio_res);
-    }
-    else
-    {
-        LOG(LVL_INFO, "LIS3DH INT pin  registered");
-    }
-#endif
+    LOG(LVL_INFO, "LIS3DH motion detect enabled, INT pin registered");
+    return true;
 }

@@ -29,6 +29,8 @@
 #include "local_provisioning.h"
 #include "as_bleBareMetal.h"
 #include "as_battery.h"
+#include "board.h"
+#include "as_types.h"
 #ifdef APP_BUZZER
 #include "as_buzzer.h"
 #endif
@@ -220,48 +222,103 @@ static void cycleCounterInit(void)
 }
 
 /* ------------------------------------------------------------------ */
-/* Buzzer heartbeat                                                    */
+/* Heartbeat indicator (buzzer beep, else LED flash)                   */
 /* ------------------------------------------------------------------ */
 
-#ifdef APP_BUZZER
-/* Same tone/length as asBuzzerBeepSuperShort(), which can't be used here
- * since its scheduler task doesn't run while we block. */
-#define BEEP_PERIOD_US 1000000u
-#define BEEP_ON_US 50000u
+/* The as_buzzer.c / as_led.c sequences run from the app scheduler, which
+ * doesn't run while we block, so the indicator is driven directly here. */
+#if defined(APP_BUZZER)
+#define INDICATOR_ENABLED
+#define INDICATOR_ON_US 50000u /* same as asBuzzerBeepSuperShort() */
 
-static uint32_t beepStart;
-static bool beepOn;
-
-static void beepStartNow(void)
+static void indicatorOn(void)
 {
-    beepStart = DWT->CYCCNT;
     asBuzzerToneOn();
-    beepOn = true;
 }
 
-/* Called from the busy-wait: turns the tone off after BEEP_ON_US and
- * starts the next beep every BEEP_PERIOD_US */
-static void beepService(void)
-{
-    uint32_t elapsed = DWT->CYCCNT - beepStart;
-
-    if (beepOn && elapsed >= BEEP_ON_US * CPU_CYCLES_PER_US)
-    {
-        asBuzzerToneOff();
-        beepOn = false;
-    }
-    if (elapsed >= BEEP_PERIOD_US * CPU_CYCLES_PER_US)
-    {
-        beepStart += BEEP_PERIOD_US * CPU_CYCLES_PER_US;
-        asBuzzerToneOn();
-        beepOn = true;
-    }
-}
-
-static void beepStop(void)
+static void indicatorOff(void)
 {
     asBuzzerToneOff();
-    beepOn = false;
+}
+
+#elif defined(APP_LED)
+#define INDICATOR_ENABLED
+#define INDICATOR_ON_US 100000u /* same as as_led.c flash */
+
+/* LED 0, except K4W which uses LED 1 */
+#if ASAFE_DEVICE_TYPE == DEVICE_TYPE_KKM_K4W
+#define INDICATOR_LED_IDX 1
+#else
+#define INDICATOR_LED_IDX 0
+#endif
+
+static const uint8_t ledPins[] = BOARD_LED_PIN_LIST;
+#define INDICATOR_LED_PIN (ledPins[INDICATOR_LED_IDX])
+
+static void indicatorOn(void)
+{
+    if (BOARD_LED_ACTIVE_LOW)
+    {
+        nrf_gpio_pin_clear(INDICATOR_LED_PIN);
+    }
+    else
+    {
+        nrf_gpio_pin_set(INDICATOR_LED_PIN);
+    }
+}
+
+static void indicatorOff(void)
+{
+    if (BOARD_LED_ACTIVE_LOW)
+    {
+        nrf_gpio_pin_set(INDICATOR_LED_PIN);
+    }
+    else
+    {
+        nrf_gpio_pin_clear(INDICATOR_LED_PIN);
+    }
+}
+#endif
+
+#ifdef INDICATOR_ENABLED
+#define INDICATOR_PERIOD_US 1000000u
+
+static uint32_t indicatorStart;
+static bool indicatorIsOn;
+
+static void indicatorStartNow(void)
+{
+#if !defined(APP_BUZZER)
+    nrf_gpio_cfg_output(INDICATOR_LED_PIN);
+#endif
+    indicatorStart = DWT->CYCCNT;
+    indicatorOn();
+    indicatorIsOn = true;
+}
+
+/* Called from the busy-wait: turns the indicator off after INDICATOR_ON_US
+ * and starts the next one every INDICATOR_PERIOD_US */
+static void indicatorService(void)
+{
+    uint32_t elapsed = DWT->CYCCNT - indicatorStart;
+
+    if (indicatorIsOn && elapsed >= INDICATOR_ON_US * CPU_CYCLES_PER_US)
+    {
+        indicatorOff();
+        indicatorIsOn = false;
+    }
+    if (elapsed >= INDICATOR_PERIOD_US * CPU_CYCLES_PER_US)
+    {
+        indicatorStart += INDICATOR_PERIOD_US * CPU_CYCLES_PER_US;
+        indicatorOn();
+        indicatorIsOn = true;
+    }
+}
+
+static void indicatorStop(void)
+{
+    indicatorOff();
+    indicatorIsOn = false;
 }
 #endif
 
@@ -272,8 +329,8 @@ static void waitUntil(uint32_t startCycles, uint32_t delayUs)
     uint32_t delayCycles = delayUs * CPU_CYCLES_PER_US;
     while ((DWT->CYCCNT - startCycles) < delayCycles)
     {
-#ifdef APP_BUZZER
-        beepService();
+#ifdef INDICATOR_ENABLED
+        indicatorService();
 #endif
     }
 }
@@ -384,8 +441,8 @@ bool asBLEBareMetalStart(uint32_t timeSeconds, uint32_t serialNumber, asMode_e m
     cycleCounterInit();
     hfxoStart();
     radioInit();
-#ifdef APP_BUZZER
-    beepStartNow();
+#ifdef INDICATOR_ENABLED
+    indicatorStartNow();
 #endif
 
     for (;;)
@@ -404,8 +461,8 @@ bool asBLEBareMetalStart(uint32_t timeSeconds, uint32_t serialNumber, asMode_e m
         waitUntil(eventStart, stepUs);
     }
 
-#ifdef APP_BUZZER
-    beepStop();
+#ifdef INDICATOR_ENABLED
+    indicatorStop();
 #endif
     radioDeinit();
     hfxoStop();
